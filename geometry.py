@@ -31,7 +31,7 @@ class Body:
         # actual body definition
         if (self.bType=="PLA"):
             return myBuf+"PLA %8s % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E" \
-             % ( self.bName, self.P[0], self.P[1], self.P[2], self.V[0], self.V[1], self.V[2] )
+             % ( self.bName, self.V[0], self.V[1], self.V[2], self.P[0], self.P[1], self.P[2] )
         elif (self.bType=="SPH"):
             return myBuf+"SPH %8s % 15.8E % 15.8E % 15.8E % 15.8E" \
              % ( self.bName, self.P[0], self.P[1], self.P[2], self.Rs[0] )
@@ -47,28 +47,28 @@ class Body:
             if (data[0]=="PLA"):
                 newBody.bType="PLA"
                 newBody.bName=data[1]
-                newBody.V=np.array(data[2:5])
-                newBody.P=np.array(data[5:8])
+                newBody.V=np.array(data[2:5]).astype(float)
+                newBody.P=np.array(data[5:8]).astype(float)
             elif (data[0]=="YZP"):
                 newBody.bType="PLA"
                 newBody.bName=data[1]
                 newBody.V=np.array([1.0,0.0,0.0])
-                newBody.P[0]=data[2]
+                newBody.P[0]=data[2].astype(float)
             elif (data[0]=="XZP"):
                 newBody.bType="PLA"
                 newBody.bName=data[1]
                 newBody.V=np.array([0.0,1.0,0.0])
-                newBody.P[1]=data[2]
+                newBody.P[1]=data[2].astype(float)
             elif (data[0]=="XYP"):
                 newBody.bType="PLA"
                 newBody.bName=data[1]
                 newBody.V=np.array([0.0,0.0,1.0])
-                newBody.P[2]=data[2]
+                newBody.P[2]=data[2].astype(float)
             elif (data[0]=="SPH"):
                 newBody.bType="SPH"
                 newBody.bName=data[1]
-                newBody.P=np.array(data[2:5])
-                newBody.Rs[0]=data[5]
+                newBody.P=np.array(data[2:5]).astype(float)
+                newBody.Rs[0]=data[5].astype(float)
             elif (tmpLine.startswith("*")):
                 if (len(newBody.comment)==0):
                     newBody.comment=tmpLine
@@ -163,15 +163,16 @@ class Region():
     def assignMat(self,myMaterial):
         self.material=myMaterial
         
-    def echo(self):
-        # take into account comment lines
-        myBuf=""
-        if (len(self.comment)>0):
-            myBuf=self.comment+"\n"
-        return myBuf+"%8s %4d %s" % ( self.rName, self.neigh, self.definition )
-
-    def echoAssignMat(self):
-        return "ASSIGNMA  %10s%10s" % ( self.material, self.rName )
+    def echo(self,lMat=False):
+        if (lMat):
+            # echo ASSIGNMA card
+            return "ASSIGNMA  %10s%10s" % ( self.material, self.rName )
+        else:
+            # take into account comment lines
+            myBuf=""
+            if (len(self.comment)>0):
+                myBuf=self.comment+"\n"
+            return myBuf+"%-8s   %4d %s" % ( self.rName, self.neigh, self.definition )
 
 class Geometry():
     '''
@@ -248,7 +249,7 @@ class Geometry():
                     if (len(regBuf)>0):
                         # acquire region
                         newGeom.addReg(Region.fromBuf(regBuf))
-                        regBuf="" # flush buffer
+                        regBuf="" # flush region def buffer
                     print("...acquired %d regions;"%(len(newGeom.regs)))
                     lRead=0 # ignore LATTICE cards
                 else:
@@ -257,17 +258,84 @@ class Geometry():
                         tmpBuf=tmpBuf+tmpLine
                         continue
                     if (tmpLine.startswith(" ")):
+                        # region definition continues
                         regBuf=regBuf+tmpBuf+tmpLine
                         tmpBuf="" # flush buffer
                     else:
+                        # a new region
                         if (len(regBuf)>0):
-                            # acquire region
+                            # acquire region previously read (if any)
                             newGeom.addReg(Region.fromBuf(regBuf))
-                        tmpBuf=tmpBuf+tmpLine
-                        regBuf=tmpBuf
+                            regBuf="" # flush region def buffer
+                        regBuf=tmpBuf+tmpLine
+                        tmpBuf=""
                     
         ff.close()
         print("...done;")
- 
+        return newGeom
+
+    def echo(self,oFileName,lSplit=False,what="all",dMode="w"):
+        '''
+        - what="all"/"bodies"/"regions"/"materials"
+        '''
+        import os
+        
+        if (not oFileName.endswith(".inp")):
+            oFileName=oFileName+".inp"
+
+        if (what.upper()=="BODIES"):
+            print("saving bodies in file %s..."%(oFileName))
+            ff=open(oFileName,dMode)
+            ff.write("* \n")
+            for tmpBody in self.bods:
+                ff.write("%s\n"%(tmpBody.echo()))
+            ff.write("* \n")
+            ff.close()
+            print("...done;")
+        elif (what.upper()=="REGIONS"):
+            print("saving regions in file %s..."%(oFileName))
+            ff=open(oFileName,dMode)
+            ff.write("* \n")
+            for tmpReg in self.regs:
+                ff.write("%s\n"%(tmpReg.echo()))
+            ff.write("* \n")
+            ff.close()
+            print("...done;")
+        elif (what.upper()=="MATERIALS"):
+            print("saving ASSIGNMA cards in file %s..."%(oFileName))
+            ff=open(oFileName,dMode)
+            ff.write("* \n")
+            for tmpReg in self.regs:
+                ff.write("%s\n"%(tmpReg.echo(lMat=True)))
+            ff.write("* \n")
+            ff.close()
+            print("...done;")
+        elif (what.upper()=="ALL"):
+            if (lSplit):
+                self.echo(oFileName.replace(".inp","_bodies.inp",1),lSplit=False,
+                          what="bodies",dMode="w")
+                self.echo(oFileName.replace(".inp","_regions.inp",1),lSplit=False,
+                          what="regions",dMode="w")
+                self.echo(oFileName.replace(".inp","_assignmats.inp",1),lSplit=False,
+                          what="materials",dMode="w")
+            else:
+                ff=open(oFileName,"w")
+                ff.write("%-10s%60s%-10s\n"%("GEOBEGIN","","COMBNAME"))
+                ff.write("% 5d% 5d%10s%s\n"%(0,0,"",self.title))
+                ff.close()
+                self.echo(oFileName,lSplit=False,what="bodies",dMode="a")
+                ff=open(oFileName,"a")
+                ff.write("%-10s\n"%("END"))
+                ff.close()
+                self.echo(oFileName,lSplit=False,what="regions",dMode="a")
+                ff=open(oFileName,"a")
+                ff.write("%-10s\n"%("END"))
+                ff.write("%-10s\n"%("GEOEND"))
+                ff.close()
+                self.echo(oFileName,lSplit=False,what="materials",dMode="a")
+        else:
+            print("...what should I echo? %s NOT reconised!"%(what))
+            
 if (__name__=="__main__"):
     caloCrysGeo=Geometry.fromInp("caloCrys.inp")
+    caloCrysGeo.echo("pippo.inp",lSplit=True)
