@@ -8,7 +8,7 @@ class Body:
     '''
     - supported bodies: all planes and spheres, nothing else for the time being;
     - body definition on ONE line only, and always starts at col 1;
-    - support only for preceding comments, NO comments headed by !
+    - support only for preceding comments, NO comments headed by ! or after body def
     - no support for $start_* cards;
     '''
 
@@ -110,11 +110,11 @@ class Body:
 class Region():
     '''
     - no parsing/splitting of zones;
-    - support only for preceding comments or commented lines between region definition lines,
-      NO comments headed by !
+    - support only for preceding comments or commented lines between region definition
+      lines, NO comments headed by !
     - a region definition always starts at column 1;
     - ASSIGNMA cards: only 1:1 material:region assignment, NO material assignment
-      for decay radiation simulation, NO magnetic fields;
+      for decay radiation simulation, NO magnetic/electric fields;
     '''
 
     def __init__(self):
@@ -178,7 +178,8 @@ class Geometry():
     '''
     - name-based FLUKA geometry defition;
     - NO support of LATTICE cards;
-    - NO support for #input cards or geo defitions in files other than the one being parsed;
+    - NO support for #input cards or geo defitions in files other than that being parsed;
+    - NO support for ROT-DEFI cards;
     - comments:
       . body: commented lines are considered always before the comment, and only
               commented lines before the body will be retained;
@@ -335,7 +336,26 @@ class Geometry():
                 self.echo(oFileName,lSplit=False,what="materials",dMode="a")
         else:
             print("...what should I echo? %s NOT reconised!"%(what))
+
+    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3):
+        print("applying solid transformation(s)...")
+        if (myMat is not None):
+            print("...applying transformation expressed by matrix to geometry...")
+            for ii in range(len(self.bods)):
+                self.bods[ii].rotate(myMat=myMat,myTheta=None,myAxis=None)
+        elif (myTheta is not None):
+            print("...applying rotation by %f degs around axis %d..."%(myTheta,myAxis))
+            for ii in range(len(self.bods)):
+                self.bods[ii].rotate(myMat=None,myTheta=myTheta,myAxis=3)
+        if (dd is not None):
+            print("...applying traslation array [%f,%f,%f] cm..."%(dd[0],dd[1],dd[2]))
+            for ii in range(len(self.bods)):
+                self.bods[ii].traslate(dd=dd)
+        if (myMat is None and myTheta is None and dd is None):
+            print("...no transformation provided!")
+        print("...done.")
             
 if (__name__=="__main__"):
     caloCrysGeo=Geometry.fromInp("caloCrys.inp")
-    caloCrysGeo.echo("pippo.inp",lSplit=True)
+    caloCrysGeo.solidTrasform(dd=[0,10,-20])
+    caloCrysGeo.echo("pippo.inp")
