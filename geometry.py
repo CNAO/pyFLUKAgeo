@@ -8,7 +8,8 @@ class Body:
     '''
     - supported bodies: all planes and spheres, nothing else for the time being;
     - body definition on ONE line only, and always starts at col 1;
-    - support only for preceding comments, NO comments headed by ! or after body def
+    - support only for preceding comments, NO comments headed by "!" or after
+      body definition;
     - no support for $start_* cards;
     '''
 
@@ -30,8 +31,10 @@ class Body:
             myBuf=self.comment+"\n"
         # actual body definition
         if (self.bType=="PLA"):
-            return myBuf+"PLA %8s % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E" \
-             % ( self.bName, self.V[0], self.V[1], self.V[2], self.P[0], self.P[1], self.P[2] )
+            return myBuf+ \
+                "PLA %8s % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E" % \
+                ( self.bName, self.V[0], self.V[1], self.V[2], \
+                              self.P[0], self.P[1], self.P[2] )
         elif (self.bType=="SPH"):
             return myBuf+"SPH %8s % 15.8E % 15.8E % 15.8E % 15.8E" \
              % ( self.bName, self.P[0], self.P[1], self.P[2], self.Rs[0] )
@@ -110,11 +113,11 @@ class Body:
 class Region():
     '''
     - no parsing/splitting of zones;
-    - support only for preceding comments or commented lines between region definition
-      lines, NO comments headed by !
+    - support only for preceding comments or commented lines between region
+      definition lines, NO comments headed by !
     - a region definition always starts at column 1;
-    - ASSIGNMA cards: only 1:1 material:region assignment, NO material assignment
-      for decay radiation simulation, NO magnetic/electric fields;
+    - ASSIGNMA cards: only 1:1 material:region assignment, NO material
+      assignment for decay radiation simulation, NO magnetic/electric fields;
     '''
 
     def __init__(self):
@@ -140,10 +143,12 @@ class Region():
                     newReg.rName=data[0]
                     newReg.neigh=float(data[1])
                     newReg.definition=tmpLine
-                    # remove region name and number of neighbour regions from definition
+                    # remove region name and number of neighbour regions from
+                    #       definition
                     newReg.definition=newReg.definition.replace(data[0],"",1)
                     newReg.definition=newReg.definition.replace(data[1],"",1)
-                    newReg.definition=newReg.definition.strip() # remove heading/trailing empty spaces
+                    # remove heading/trailing empty spaces
+                    newReg.definition=newReg.definition.strip() 
                     lHeadParsed=True
             else:
                 newReg.definition=newReg.definition+"\n"+tmpLine
@@ -156,7 +161,8 @@ class Region():
                 if (len(self.comment)>0):
                     # ...trailing to any existing comment
                     self.comment=self.comment+"\n"
-                self.comment=self.comment+"* NAME CHANGE: FROM %s TO %s"%(self.rName,nString)
+                self.comment=self.comment+\
+                    "* NAME CHANGE: FROM %s TO %s"%(self.rName,nString)
                 self.rName=nString
             self.definition.replace(oString,nString)
 
@@ -172,21 +178,23 @@ class Region():
             myBuf=""
             if (len(self.comment)>0):
                 myBuf=self.comment+"\n"
-            return myBuf+"%-8s   %4d %s" % ( self.rName, self.neigh, self.definition )
+            return myBuf+"%-8s   %4d %s" % \
+                ( self.rName, self.neigh, self.definition )
 
 class Geometry():
     '''
     - name-based FLUKA geometry defition;
     - NO support of LATTICE cards;
-    - NO support for #input cards or geo defitions in files other than that being parsed;
+    - NO support for #input cards or geo defitions in files other than that
+       being parsed;
     - NO support for ROT-DEFI cards;
     - comments:
       . body: commented lines are considered always before the comment, and only
               commented lines before the body will be retained;
               --> trailing comments to body declaration section will disappear!
-      . region: commented lines are kept where they are found, if they are found before
-                or along the region declaration;
-              --> trailing comments to region declaration section will disappear!
+      . region: commented lines are kept where they are found, if they are
+                found before or along the region declaration;
+              --> trailing comments to region declaration will disappear!
     '''
     def __init__(self):
         self.bods=[]
@@ -313,12 +321,12 @@ class Geometry():
             print("...done;")
         elif (what.upper()=="ALL"):
             if (lSplit):
-                self.echo(oFileName.replace(".inp","_bodies.inp",1),lSplit=False,
-                          what="bodies",dMode="w")
-                self.echo(oFileName.replace(".inp","_regions.inp",1),lSplit=False,
-                          what="regions",dMode="w")
-                self.echo(oFileName.replace(".inp","_assignmats.inp",1),lSplit=False,
-                          what="materials",dMode="w")
+                self.echo(oFileName.replace(".inp","_bodies.inp",1),\
+                          lSplit=False,what="bodies",dMode="w")
+                self.echo(oFileName.replace(".inp","_regions.inp",1),\
+                          lSplit=False,what="regions",dMode="w")
+                self.echo(oFileName.replace(".inp","_assignmats.inp",1),\
+                          lSplit=False,what="materials",dMode="w")
             else:
                 ff=open(oFileName,"w")
                 ff.write("%-10s%60s%-10s\n"%("GEOBEGIN","","COMBNAME"))
@@ -344,11 +352,13 @@ class Geometry():
             for ii in range(len(self.bods)):
                 self.bods[ii].rotate(myMat=myMat,myTheta=None,myAxis=None)
         elif (myTheta is not None):
-            print("...applying rotation by %f degs around axis %d..."%(myTheta,myAxis))
+            print("...applying rotation by %f degs around axis %d..."%\
+                  (myTheta,myAxis))
             for ii in range(len(self.bods)):
                 self.bods[ii].rotate(myMat=None,myTheta=myTheta,myAxis=3)
         if (dd is not None):
-            print("...applying traslation array [%f,%f,%f] cm..."%(dd[0],dd[1],dd[2]))
+            print("...applying traslation array [%f,%f,%f] cm..."%\
+                  (dd[0],dd[1],dd[2]))
             for ii in range(len(self.bods)):
                 self.bods[ii].traslate(dd=dd)
         if (myMat is None and myTheta is None and dd is None):
