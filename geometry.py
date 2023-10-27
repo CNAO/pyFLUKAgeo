@@ -3,6 +3,7 @@
 # python version: >= 3.8.10;
 
 import numpy as np
+from myMath import *
 
 class Body:
     '''
@@ -90,17 +91,17 @@ class Body:
             print("please provide me with a 3D traslation array!")
             exit(1)
                 
-    def rotate(self,myMat=None,myTheta=None,myAxis=3):
+    def rotate(self,myMat=None,myTheta=None,myAxis=3,lDegs=True,lDebug=True):
         if (myMat is not None):
-            print("rotation by matrix NOT supported yet!")
-            exit(1)
+            self.P=myMat.mulArr(self.P,lDebug=lDebug)
+            self.V=myMat.mulArr(self.V,lDebug=lDebug)
         elif (myTheta is not None):
             if (myAxis is None):
                 print("you must specify a rotation axis together with an angle!")
                 exit(1)
             else:
-                print("rotation by axis-angle NOT supported yet!")
-                exit(1)
+                myMat=RotMat(myAng=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
+                self.rotate(myMat=myMat,myTheta=None,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                 
     def rename(self,newName):
         # notify user as a comment line
@@ -345,17 +346,19 @@ class Geometry():
         else:
             print("...what should I echo? %s NOT reconised!"%(what))
 
-    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3):
+    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lDebug=True):
         print("applying solid transformation(s)...")
         if (myMat is not None):
             print("...applying transformation expressed by matrix to geometry...")
             for ii in range(len(self.bods)):
-                self.bods[ii].rotate(myMat=myMat,myTheta=None,myAxis=None)
+                self.bods[ii].rotate(myMat=myMat,myTheta=None,myAxis=None,\
+                                     lDegs=lDegs,lDebug=lDebug)
         elif (myTheta is not None):
             print("...applying rotation by %f degs around axis %d..."%\
                   (myTheta,myAxis))
             for ii in range(len(self.bods)):
-                self.bods[ii].rotate(myMat=None,myTheta=myTheta,myAxis=3)
+                self.bods[ii].rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,\
+                                     lDegs=lDegs,lDebug=lDebug)
         if (dd is not None):
             print("...applying traslation array [%f,%f,%f] cm..."%\
                   (dd[0],dd[1],dd[2]))
@@ -366,6 +369,9 @@ class Geometry():
         print("...done.")
             
 if (__name__=="__main__"):
+    lDebug=True
     caloCrysGeo=Geometry.fromInp("caloCrys.inp")
-    caloCrysGeo.solidTrasform(dd=[0,10,-20])
+    # caloCrysGeo.solidTrasform(dd=[0,10,-20])
+    myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
+    caloCrysGeo.solidTrasform(dd=None,myMat=myMat)
     caloCrysGeo.echo("pippo.inp")
