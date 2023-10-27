@@ -3,6 +3,7 @@
 # python version: >= 3.8.10;
 
 import numpy as np
+import copy
 
 class Matrix:
     '''
@@ -29,6 +30,36 @@ class Matrix:
                 buf=buf+" "+myFmt%(self[ii,jj])
             buf=buf+" |\n"
         return buf
+
+    def mulMat(self,RMat,lDebug=True):
+        'method to multiply 2D squared matrices of the same number of rows'
+        if (self.nDim!=RMat.nDim):
+            print("cannot multiply a %dx%d matrix times a %dx%d matrix"%\
+                  (self.nDim,self.nDim,RMat.nDim,RMat.nDim))
+            exit(1)
+        newMat=copy.deepcopy(self)
+        for ii in range(self.nDim):
+            for jj in range(self.nDim):
+                self[ii,jj]=sum([ newMat[ii,kk]*RMat[kk,jj]\
+                                        for kk in range(self.nDim)])
+        if (lDebug):
+            print("Matrix.mulMat():")
+            print(self.echo())
+        return
+
+    def mulArr(self,myArr,lDebug=True):
+        'method to multiply a 2D squared matrix by an array'
+        if (self.nDim!=len(myArr)):
+            print("cannot multiply a %dx%d matrix times a %d array"%\
+                  (self.nDim,self.nDim,len(myArr)))
+            exit(1)
+        out=np.zeros((len(myArr),1))
+        for ii in range(self.nDim):
+            out[ii]=sum([ newMat[ii,kk]*myArr[kk] \
+                              for kk in range(self.nDim)])
+        if (lDebug):
+            print("Matrix.mulArr():",out)
+        return out
 
 class UnitMat(Matrix):
     '''
@@ -88,10 +119,11 @@ class RotMat(UnitMat):
             print("number of angles (%d) and axes (%d) do not match!"%(\
                   len(myAngs),len(myAxes)))
             exit(1)
-        # first, initialise matrix as unit matrix;
-        newMat=UnitMat()
-        # then, go through the array on angles and axes to define the overall
+        # go through the array on angles and axes to define the overall
         #   matrix transformation
+        rotMatrices=[]
+        if (lDebug):
+            print("creating rotation matrices...")
         for iTrasf in range(len(myAngs)):
             if (not lDegs):
                 angDegs=np.degrees(myAngs[iTrasf])
@@ -102,19 +134,13 @@ class RotMat(UnitMat):
             if (lDebug):
                 print("...creating rotation matrix: %g degs around %d axis..."%\
                       (angDegs,myAxes[iTrasf]))
-            tmpRotMat=RotMat(myAng=myAngs[iTrasf],myAxis=myAxes[iTrasf],\
-                          lDegs=lDegs,lDebug=lDebug)
-            if (lDebug):
-                print("...appending transformation to existing ones...")
-            tmpMat=newMat
-            newMat=UnitMat()
-            for ii in range(newMat.nDim):
-                for jj in range(newMat.nDim):
-                    newMat[ii,jj]=sum([ tmpRotMat[ii,kk]*tmpMat[kk,jj]\
-                                        for kk in range(newMat.nDim)])
-            if (lDebug):
-                print("RotMat.ConcatenatedRotMatrices:")
-                print(newMat.echo())
+            rotMatrices.append(RotMat(myAng=myAngs[iTrasf],myAxis=myAxes[iTrasf],\
+                          lDegs=lDegs,lDebug=lDebug))
+        if (lDebug):
+            print("concatenating them...")
+        newMat=UnitMat()
+        for iTrasf in range(len(myAngs)-1,-1,-1):
+            newMat.mulMat(rotMatrices[iTrasf],lDebug=lDebug)
             
         return newMat
                 
