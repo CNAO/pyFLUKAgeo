@@ -53,9 +53,9 @@ class Matrix:
             print("cannot multiply a %dx%d matrix times a %d array"%\
                   (self.nDim,self.nDim,len(myArr)))
             exit(1)
-        out=np.zeros((len(myArr),1))
+        out=np.zeros((len(myArr)))
         for ii in range(self.nDim):
-            out[ii]=sum([ newMat[ii,kk]*myArr[kk] \
+            out[ii]=sum([ self[ii,kk]*myArr[kk] \
                               for kk in range(self.nDim)])
         if (lDebug):
             print("Matrix.mulArr():",out)
