@@ -371,7 +371,6 @@ class Geometry():
 if (__name__=="__main__"):
     lDebug=True
     caloCrysGeo=Geometry.fromInp("caloCrys.inp")
-    # caloCrysGeo.solidTrasform(dd=[0,10,-20])
     myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
-    caloCrysGeo.solidTrasform(dd=None,myMat=myMat)
+    caloCrysGeo.solidTrasform(dd=[0,10,-20],myMat=myMat)
     caloCrysGeo.echo("pippo.inp")
