@@ -23,7 +23,7 @@
 
 import numpy as np
 
-class GRID:
+class OLDG:
     def __init__(self,Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=False):
         '''
         NR, NT, NP are number of points along grid;
@@ -34,13 +34,13 @@ class GRID:
         self.TTs=np.linspace(Tmin,Tmax,num=NT)
         self.PPs=np.linspace(Pmin,Pmax,num=NP)
         if (lDebug):
-            print("GRID.__init__(): self.RRs:",self.RRs)
-            print("GRID.__init__(): self.TTs:",self.TTs)
-            print("GRID.__init__(): self.PPs:",self.PPs)
+            print("OLDG.__init__(): self.RRs:",self.RRs)
+            print("OLDG.__init__(): self.TTs:",self.TTs)
+            print("OLDG.__init__(): self.PPs:",self.PPs)
 
     @staticmethod
     def OneLayer(R,Tmax,NT,Pmax,NP,lDebug=True):
-        return GRID(R,R,1,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
+        return OLDG(R,R,1,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
     
     def DefineHiveBoundaries(self,lDebug=False,dR=None,dT=None,dP=None):
         # get dR
@@ -71,9 +71,9 @@ class GRID:
         TTs=np.append(self.TTs-dT/2.,self.TTs[-1]+dT/2.)
         PPs=np.append(self.PPs-dP/2.,self.PPs[-1]+dP/2.)
         if (lDebug):
-            print("GRID.DefineHiveBoundaries(): RRs,dR:",RRs,dR)
-            print("GRID.DefineHiveBoundaries(): TTs,dT:",TTs,dT)
-            print("GRID.DefineHiveBoundaries(): PPs,dP:",PPs,dP)
+            print("OLDG.DefineHiveBoundaries(): RRs,dR:",RRs,dR)
+            print("OLDG.DefineHiveBoundaries(): TTs,dT:",TTs,dT)
+            print("OLDG.DefineHiveBoundaries(): PPs,dP:",PPs,dP)
         return RRs, TTs, PPs
 
 if ( __name__ == "__main__" ):
@@ -84,5 +84,5 @@ if ( __name__ == "__main__" ):
     NT=10     # number of steps (i.e. entities)
     Pmax=20   # phi [degs] --> range: -Pmax:Pmax
     NP=21     # number of steps (i.e. entities)
-    myGrid=GRID.OneLayer(R,Tmax,NT,Pmax,NP,lDebug=lDebug)
+    myGrid=OLDG.OneLayer(R,Tmax,NT,Pmax,NP,lDebug=lDebug)
     RRs,TTs,PPs=myGrid.DefineHiveBoundaries(lDebug=lDebug,dR=100)
