@@ -98,7 +98,28 @@ class GRID:
     def SphericalShell_OneLayer(R,Tmax,NT,Pmax,NP,lDebug=False):
         return GRID.SphericalShell(R,R,1,-Tmax,Tmax,NT,-Pmax,Pmax,NP,\
                                    lDebug=lDebug)
+
+def DefHiveBoundaries_SphericalShell(Rmin,Rmax,dR,Tmin,Tmax,dT,Pmin,Pmax,dP):
+    '''
+    All input data in interface refer to the hive, not to the grid of objects
+       therein contained!
+    '''
+    print("defining hive boundaries for a spherical shell:")
+    print("* R[cm]=[%g:%g:%g];"%(Rmin,dR,Rmax))
+    print("* theta[deg]=[%g:%g:%g];"%(Tmin,dT,Tmax))
+    print("* phi[deg]=[%g:%g:%g];"%(Pmin,dP,Pmax))
+    RRs=np.arange(Rmin,Rmax+dR,dR)
+    TTs=np.arange(Tmin,Tmax+dT,dT)
+    PPs=np.arange(Pmin,Pmax+dP,dP)
+    return RRs, TTs, PPs
     
+def DefHiveBoundaries_SphericalShell_OneLayer(R,dR,Tmax,NT,Pmax,NP):
+    dT=2*Tmax/NT
+    dP=2*Pmax/NP
+    return DefHiveBoundaries_SphericalShell(R-dR/2,R+dR/2,dR,\
+                                            -Tmax-dT/2,Tmax+dT/2,dT,\
+                                            -Pmax-dP/2,Pmax+dP/2,dP)
+
 if ( __name__ == "__main__" ):
     # perform some tests
     lDebug=True
@@ -108,3 +129,4 @@ if ( __name__ == "__main__" ):
     Pmax=2    # phi [degs] --> range: -Pmax:Pmax
     NP=2      # number of steps (i.e. entities)
     GRID.SphericalShell_OneLayer(R,Tmax,NT,Pmax,NP,lDebug=lDebug)
+    print(DefHiveBoundaries_SphericalShell_OneLayer(R,50,Tmax,NT,Pmax,NP))
