@@ -3,7 +3,8 @@
 # python version: >= 3.8.10;
 
 import numpy as np
-from myMath import *
+import myMath
+import grid
 
 class Body:
     '''
@@ -100,7 +101,7 @@ class Body:
                 print("you must specify a rotation axis together with an angle!")
                 exit(1)
             else:
-                myMat=RotMat(myAng=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
+                myMat=myMath.RotMat(myAng=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                 self.rotate(myMat=myMat,myTheta=None,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                 
     def rename(self,newName):
@@ -208,6 +209,9 @@ class Geometry():
     def addReg(self,tmpReg):
         self.regs.append(tmpReg)
 
+    def setTitle(self,tmpTitle="My Geometry"):
+        self.title=tmpTitle
+        
     def assignma(self,tmpLine):
         data=tmpLine.split()
         myMat=data[1]
@@ -284,6 +288,108 @@ class Geometry():
         print("...done;")
         return newGeom
 
+    @staticmethod
+    def DefineHive_SphericalShell(RRs,TTs,PPs,tmpTitle="Hive for a spherical shell"):
+        '''
+        This method defines a the hive for a grid on a spherical shell.
+
+        The grid is described in spherical coordinates:
+        - r [cm];
+        - theta [degs]: angle in yz-plane (positive when pointing towards y>0);
+        - phi [degs]: angle in xz-plane (positive when pointing towards x>0).
+
+        The grid is centred around the z-axis and symmetric in the two
+          directions, up/down (y>0/y<0), left/right (x>0/x<0).
+
+        The hive is delimited:
+        - radially, by spheres;
+        - on theta, by rotated XZPs;
+        - on phi, by rotated YZPs;
+
+        RRs, TTs, and PPs must be in increasing order
+        '''
+        print("Preparing the hive for a spherical shell...")
+        
+        print("...check of input info...")
+        for tmpR in RRs:
+            if (tmpR<0.0):
+                print("Geometry.DefineHive_SphericalShell(): Error negative R: %g<0!"%(tmpR))
+                exit(1)
+        if ((TTs[-1]-TTs[0])>180):
+            print("Geometry.DefineHive_SphericalShell(): Theta range too large: %g>180!"%(TTs[-1]-TTs[0]))
+            exit(1)
+        if ((PPs[-1]-PPs[0])>180):
+            print("Geometry.DefineHive_SphericalShell(): Theta range too large: %g>180!"%(PPs[-1]-PPs[0]))
+            exit(1)
+                
+        newGeom=Geometry()
+
+        print("...generating bodies...")
+        spheres=[]
+        for ii,RR in enumerate(RRs,1):
+            tmpBD=Body()
+            tmpBD.bName="HVRAD%03i"%(ii)
+            tmpBD.bType="SPH"
+            tmpBD.Rs[0]=RR
+            tmpBD.comment="* Hive radial boundary at R[cm]=%g"%(RR)
+            spheres.append(tmpBD)
+        spheres[0].comment="* \n"+spheres[0].comment
+        thetas=[]
+        for ii,TT in enumerate(TTs,1):
+            tmpBD=Body()
+            tmpBD.bName="HVTHT%03i"%(ii)
+            tmpBD.V=np.array([0.0,1.0,0.0])
+            tmpBD.rotate(myMat=None,myTheta=-TT,myAxis=1,lDegs=True)
+            tmpBD.comment="* Hive theta boundary at theta[deg]=%g"%(TT)
+            thetas.append(tmpBD)
+        thetas[0].comment="* \n"+thetas[0].comment
+        phis=[]
+        for ii,PP in enumerate(PPs,1):
+            tmpBD=Body()
+            tmpBD.bName="HVPHI%03i"%(ii)
+            tmpBD.V=np.array([1.0,0.0,0.0])
+            tmpBD.rotate(myMat=None,myTheta=PP,myAxis=2,lDegs=True)
+            tmpBD.comment="* Hive phi boundary at phi[deg]=%g"%(PP)
+            phis.append(tmpBD)
+        phis[0].comment="* \n"+phis[0].comment
+        newGeom.bods=spheres+thetas+phis
+
+        print("...generating regions...")
+        # - outside hive
+        tmpReg=Region()
+        tmpReg.rName="HV_OUTER"
+        tmpReg.material="VACUUM"
+        tmpReg.definition=''' | +%-8s | -%-8s
+                 | +%-8s -%-8s -%-8s
+                 | +%-8s -%-8s +%-8s
+                 | +%-8s -%-8s +%-8s -%-8s +%-8s
+                 | +%-8s -%-8s +%-8s -%-8s -%-8s
+'''%(spheres[0].bName,spheres[-1].bName, \
+     spheres[-1].bName,spheres[0].bName, thetas[-1].bName, \
+     spheres[-1].bName,spheres[0].bName, thetas[ 0].bName, \
+     spheres[-1].bName,spheres[0].bName, thetas[-1].bName, thetas[ 0].bName, phis[ 0].bName, \
+     spheres[-1].bName,spheres[0].bName, thetas[-1].bName, thetas[ 0].bName, phis[-1].bName  )
+        tmpReg.comment="* region outside hive"
+        newGeom.addReg(tmpReg)
+        # - inside hive
+        iHive=0
+        for iR in range(1,len(spheres)):
+            for iT in range(1,len(thetas)):
+                for iP in range(1,len(phis)):
+                    iHive=iHive+1
+                    tmpReg=Region()
+                    tmpReg.rName="HVCL%04i"%(iHive)
+                    tmpReg.material="VACUUM"
+                    tmpReg.definition='+%-8s -%-8s +%-8s -%-8s +%-8s -%-8s'%\
+                        (spheres[iR].bName,spheres[iR-1].bName,\
+                         thetas [iT].bName,thetas [iT-1].bName,\
+                         phis   [iP].bName,phis   [iP-1].bName)
+                    tmpReg.comment="* - hive region: R[cm]=[%g:%g], theta[deg]=[%g:%g], phi[deg]=[%g:%g]"%(RRs[iR],RRs[iR-1],TTs[iR],TTs[iR-1],PPs[iR],PPs[iR-1])
+                    newGeom.addReg(tmpReg)
+
+        newGeom.setTitle(tmpTitle=tmpTitle)
+        return newGeom
+    
     def echo(self,oFileName,lSplit=False,what="all",dMode="w"):
         '''
         - what="all"/"bodies"/"regions"/"materials"
@@ -370,7 +476,18 @@ class Geometry():
             
 if (__name__=="__main__"):
     lDebug=True
-    caloCrysGeo=Geometry.fromInp("caloCrys.inp")
-    myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
-    caloCrysGeo.solidTrasform(dd=[0,10,-20],myMat=myMat)
-    caloCrysGeo.echo("pippo.inp")
+    # # - manipulate a geometry
+    # caloCrysGeo=Geometry.fromInp("caloCrys.inp")
+    # myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
+    # caloCrysGeo.solidTrasform(dd=[0,10,-20],myMat=myMat)
+    # caloCrysGeo.echo("pippo.inp")
+    # - test generation of hive
+    R=500
+    dR=50
+    Tmax=30   # theta [degs] --> range: -Tmax:Tmax
+    NT=20     # number of steps (i.e. entities)
+    Pmax=20   # phi [degs] --> range: -Pmax:Pmax
+    NP=20     # number of steps (i.e. entities)
+    RRs,TTs,PPs=grid.DefHiveBoundaries_SphericalShell_OneLayer(R,dR,Tmax,NT,Pmax,NP)
+    HiveGeo=Geometry.DefineHive_SphericalShell(RRs,TTs,PPs,tmpTitle="Hive for a single-layer spherical shell")
+    HiveGeo.echo("pippo.inp")
