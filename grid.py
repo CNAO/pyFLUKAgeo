@@ -25,6 +25,14 @@ class LOCATION:
         self.W=myW
         self.label=myLab
 
+    def ret(self,what):
+        if (what.upper()=="POINT"):
+            return self.P
+        elif (what.upper()=="MATRIX"):
+            return self.W
+        elif (what.upper()=="LABEL"):
+            return self.label
+
     def echo(self,myFmt="% .6E"):
         buf="P=["
         for tmpX in self.P:
@@ -41,7 +49,24 @@ class LOCATION:
 class GRID:
     def __init__(self):
         self.locs=[] # list of LOCATIONs
-        
+
+    def __len__(self):
+        return len(self.locs)
+
+    def __iter__(self):
+        self.current_index=0
+        return self
+    
+    def __next__(self):
+        '''
+        from https://blog.finxter.com/python-__iter__-magic-method/
+        '''
+        if self.current_index < len(self):
+            x = self.locs[self.current_index]
+            self.current_index += 1
+            return x
+        raise StopIteration
+
     def AddLoc(self,myP=[0.,0.,0.],myW=myMath.UnitMat,myLab=""):
         self.locs.append(LOCATION(myP=myP,myW=myW,myLab=myLab))
 
@@ -128,5 +153,7 @@ if ( __name__ == "__main__" ):
     NT=2      # number of steps (i.e. entities)
     Pmax=2    # phi [degs] --> range: -Pmax:Pmax
     NP=2      # number of steps (i.e. entities)
-    GRID.SphericalShell_OneLayer(R,Tmax,NT,Pmax,NP,lDebug=lDebug)
-    print(DefHiveBoundaries_SphericalShell_OneLayer(R,50,Tmax,NT,Pmax,NP))
+    myGrid=GRID.SphericalShell_OneLayer(R,Tmax,NT,Pmax,NP,lDebug=lDebug)
+    # print(DefHiveBoundaries_SphericalShell_OneLayer(R,50,Tmax,NT,Pmax,NP))
+    for loc in myGrid:
+        print(loc.ret("Point"))
