@@ -172,14 +172,14 @@ class Region():
         self.material=myMaterial
         
     def echo(self,lMat=False):
+        # take into account comment lines
+        myBuf=""
+        if (len(self.comment)>0):
+            myBuf=self.comment+"\n"
         if (lMat):
             # echo ASSIGNMA card
-            return "ASSIGNMA  %10s%10s" % ( self.material, self.rName )
+            return myBuf+"ASSIGNMA  %10s%10s" % ( self.material, self.rName )
         else:
-            # take into account comment lines
-            myBuf=""
-            if (len(self.comment)>0):
-                myBuf=self.comment+"\n"
             return myBuf+"%-8s   %4d %s" % \
                 ( self.rName, self.neigh, self.definition )
 
@@ -225,6 +225,40 @@ class Geometry():
         if (not lFound):
             print("...region %s NOT found in geometry!"%(myReg))
             exit(1)
+
+    def headMe(self,myString):
+        '''
+        simple method to head a string to the geometry declaration (bodies,
+           regions, assignma cards)
+        '''
+        if (len(self.bods[0].comment)>0):
+            self.bods[0].comment=mySting+"\n"+self.bods[0].comment
+        else:
+            self.bods[0].comment=mySting
+        if (len(self.regs[0].comment)>0):
+            self.regs[0].comment=mySting+"\n"+self.regs[0].comment
+        else:
+            self.regs[0].comment=mySting
+            
+    def ret(self,myWhat,myName):
+        lFound=False
+        if (myWhat.upper()=="BODY"):
+            for iEntry,myEntry in enumerate(self.bods):
+                if (myEntry.bName==myName):
+                    lFound=True
+                    break
+        elif (myWhat.upper()=="REGION"):
+            for iEntry,myEntry in enumerate(self.bods):
+                if (myEntry.bName==myName):
+                    lFound=True
+                    break
+        else:
+            print("%s not recognised! What should I look for in the geometry?"%(myWhat))
+            exit(1)
+        if (not lFound):
+            print("unable to find %s named %s in geometry..."%(myWhat,myName))
+            exit(1)
+        return myEntry, iEntry
 
     @staticmethod
     def fromInp(myInpName):
@@ -389,7 +423,35 @@ class Geometry():
 
         newGeom.setTitle(tmpTitle=tmpTitle)
         return newGeom
+
+    @staticmethod
+    def BuildGriddedGeo_SphericalShell(myGrid,myProtoList,myProtoGeos):
+        '''
+        This method defines a FLUKA geometry representing a grid of objects
+           distributed on a spherical shell.
+
+        input parameters:
+        - grid: an instance of a GRID() class, i.e. a list of locations;
+        - myProtoList: this list states which prototype should be used at each
+                       location. NB: len(myProtoList)=len(myGrid);
+        - myProtoGeos: dictionary of actual prototype geometries. The unique
+                       entries of myProtoList are the full set or a subset of
+                       the keys of this dictionary;
+        '''
+        myGeos=[]
+        return Geometry.mergeGeometries(myGeos)
     
+    @staticmethod
+    def mergeGeometries(myGeos):
+        '''
+        Barely appending geometries one to another;
+        '''
+        new=Geometry()
+        for myGeo in myGeos:
+            new.bods=new.bods+myGeo.bods
+            new.regs=new.bods+myGeo.regs
+        return new
+
     def echo(self,oFileName,lSplit=False,what="all",dMode="w"):
         '''
         - what="all"/"bodies"/"regions"/"materials"
@@ -474,6 +536,29 @@ class Geometry():
             print("...no transformation provided!")
         print("...done.")
             
+def acquireGeometries(fileNames,geoNames=None):
+    import os.path
+    # check user input
+    if (geoNames is None):
+        geoNames=fileNames
+    elif (len(fileNames)!=len(geoNames)):
+        print("Number of items (%d) and names (%d) of geometries to acquire do not coincide!"%\
+              (len(fileNames),len(geoNames)))
+        exit(1)
+        
+    # acquire geometries:
+    print("acquiring geometries...")
+    myGeos={}
+    for ii in range(len(fileNames)):
+        if (not os.path.isfile(fileNames[ii]) or not os.path.exists(fileNames[ii])):
+            print("something wrong with file %s! please check path, existence, access rights!"%(fileNames[ii]))
+            exit(1)
+        myGeos[geoNames[ii]]=Geometry.fromInp(fileNames[ii])
+        if (geoNames[ii]!=fileNames[ii]):
+            print("--> geometry saved in DB as %s;"%(geoNames[ii]))
+    print("...acquired %d/%d geometries;"%(len(myGeos),len(fileNames)))
+    return myGeos
+
 if (__name__=="__main__"):
     lDebug=True
     # # - manipulate a geometry
@@ -481,13 +566,17 @@ if (__name__=="__main__"):
     # myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
     # caloCrysGeo.solidTrasform(dd=[0,10,-20],myMat=myMat)
     # caloCrysGeo.echo("pippo.inp")
-    # - test generation of hive
-    R=500
-    dR=50
-    Tmax=30   # theta [degs] --> range: -Tmax:Tmax
-    NT=20     # number of steps (i.e. entities)
-    Pmax=20   # phi [degs] --> range: -Pmax:Pmax
-    NP=20     # number of steps (i.e. entities)
-    RRs,TTs,PPs=grid.DefHiveBoundaries_SphericalShell_OneLayer(R,dR,Tmax,NT,Pmax,NP)
-    HiveGeo=Geometry.DefineHive_SphericalShell(RRs,TTs,PPs,tmpTitle="Hive for a single-layer spherical shell")
-    HiveGeo.echo("pippo.inp")
+    # - acquire geometries
+    fileNames=[ "caloCrys.inp","caloCrys.inp" ]
+    myGeometries=acquireGeometries(fileNames,geoNames=["pippo","pluto"]);
+    
+    # # - test generation of hive
+    # R=500
+    # dR=50
+    # Tmax=30   # theta [degs] --> range: -Tmax:Tmax
+    # NT=20     # number of steps (i.e. entities)
+    # Pmax=20   # phi [degs] --> range: -Pmax:Pmax
+    # NP=20     # number of steps (i.e. entities)
+    # RRs,TTs,PPs=grid.DefHiveBoundaries_SphericalShell_OneLayer(R,dR,Tmax,NT,Pmax,NP)
+    # HiveGeo=Geometry.DefineHive_SphericalShell(RRs,TTs,PPs,tmpTitle="Hive for a single-layer spherical shell")
+    # HiveGeo.echo("pippo.inp")
