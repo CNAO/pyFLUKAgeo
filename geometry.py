@@ -537,6 +537,11 @@ class Geometry():
         print("...done.")
             
 def acquireGeometries(fileNames,geoNames=None):
+    '''
+    A simple function to parse a series of geometry files and
+      store them in a dictionary of geometries.
+    This function can be used to parse the database of prototype geometries.
+    '''
     import os.path
     # check user input
     if (geoNames is None):
