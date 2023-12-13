@@ -3,6 +3,8 @@
 # python version: >= 3.8.10;
 
 import numpy as np
+from copy import deepcopy
+
 import myMath
 from grid import Grid, Hive
 
@@ -104,13 +106,28 @@ class Body:
                 myMat=myMath.RotMat(myAng=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                 self.rotate(myMat=myMat,myTheta=None,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                 
-    def rename(self,newName):
-        # notify user as a comment line
-        if (len(self.comment)>0):
-            # ...trailing to any existing comment
-            self.comment=self.comment+"\n"
-        self.comment=self.comment+"* NAME CHANGE: FROM %s TO %s"%(self.bName,newName)
+    def rename(self,newName,lNotify=True):
+        if (lNotify):
+            self.tailMe("* NAME CHANGE: FROM %s TO %s"%(self.bName,newName))
         self.bName=newName
+
+    def headMe(self,myString):
+        '''
+        simple method to head a string to the comment of the body declaration
+        '''
+        if (len(self.comment)>0):
+            self.comment=myString+"\n"+self.comment
+        else:
+            self.comment=myString
+            
+    def tailMe(self,myString):
+        '''
+        simple method to tail a string to the comment of the body declaration
+        '''
+        if (len(self.comment)>0):
+            self.comment=self.comment+"\n"+myString
+        else:
+            self.comment=myString
                 
 class Region():
     '''
@@ -156,17 +173,35 @@ class Region():
                 newReg.definition=newReg.definition+"\n"+tmpLine
         return newReg
         
-    def stringReplace(self,oldStrings,newStrings):
-        for oString,nString in zip(oldStrings,newStrings):
-            if (oString==self.rName):
-                # notify user as a comment line
-                if (len(self.comment)>0):
-                    # ...trailing to any existing comment
-                    self.comment=self.comment+"\n"
-                self.comment=self.comment+\
-                    "* NAME CHANGE: FROM %s TO %s"%(self.rName,nString)
-                self.rName=nString
-            self.definition.replace(oString,nString)
+    def rename(self,newName,lNotify=True):
+        if (lNotify):
+            self.tailMe("* NAME CHANGE: FROM %s TO %s"%(self.rName,newName))
+        self.rName=newName
+
+    def headMe(self,myString):
+        '''
+        simple method to head a string to the comment of the region declaration
+        '''
+        if (len(self.comment)>0):
+            self.comment=myString+"\n"+self.comment
+        else:
+            self.comment=myString
+            
+    def tailMe(self,myString):
+        '''
+        simple method to tail a string to the comment of the region declaration
+        '''
+        if (len(self.comment)>0):
+            self.comment=self.comment+"\n"+myString
+        else:
+            self.comment=myString
+                
+    def BodyNameReplaceInDef(self,oldNames,newNames):
+        '''
+        simple method to query-replace body names in region definition
+        '''
+        for oName,nName in zip(oldNames,newNames):
+            self.definition=self.definition.replace(oName,nName)
 
     def assignMat(self,myMaterial):
         self.material=myMaterial
@@ -231,14 +266,8 @@ class Geometry():
         simple method to head a string to the geometry declaration (bodies,
            regions, assignma cards)
         '''
-        if (len(self.bods[0].comment)>0):
-            self.bods[0].comment=mySting+"\n"+self.bods[0].comment
-        else:
-            self.bods[0].comment=mySting
-        if (len(self.regs[0].comment)>0):
-            self.regs[0].comment=mySting+"\n"+self.regs[0].comment
-        else:
-            self.regs[0].comment=mySting
+        self.bods[0].headMe(myString)
+        self.regs[0].headMe(myString)
             
     def ret(self,myWhat,myName):
         lFound=False
@@ -248,8 +277,8 @@ class Geometry():
                     lFound=True
                     break
         elif (myWhat.upper()=="REGION"):
-            for iEntry,myEntry in enumerate(self.bods):
-                if (myEntry.bName==myName):
+            for iEntry,myEntry in enumerate(self.regs):
+                if (myEntry.rName==myName):
                     lFound=True
                     break
         else:
@@ -330,9 +359,9 @@ class Geometry():
         new=Geometry()
         for myGeo in myGeos:
             new.bods=new.bods+myGeo.bods
-            new.regs=new.bods+myGeo.regs
+            new.regs=new.regs+myGeo.regs
         if (myTitle is None):
-            myTitle="merging geometries"
+            myTitle="appended geometries"
         new.title=myTitle
         return new
 
@@ -398,7 +427,7 @@ class Geometry():
         else:
             print("...what should I echo? %s NOT reconised!"%(what))
 
-    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lDebug=True):
+    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lDebug=False):
         print("applying solid transformation(s)...")
         if (myMat is not None):
             print("...applying transformation expressed by matrix to geometry...")
@@ -419,6 +448,21 @@ class Geometry():
         if (myMat is None and myTheta is None and dd is None):
             print("...no transformation provided!")
         print("...done.")
+
+    def rename(self,newName,lNotify=True):
+        maxLenName=8
+        if (len(newName)>=maxLenName):
+            print("Geometry.rename(): cannot rename entities with len(%s)>=%d!"%(newName,maxLenName))
+            exit(1)
+        newNameFmt=newName+"%0"+"%d"%(maxLenName-len(newName))+"d"
+        oldBodyNames=[]; newBodyNames=[]
+        for iBody in range(len(self.bods)):
+            oldBodyNames.append(self.bods[iBody].bName)
+            newBodyNames.append(newNameFmt%(iBody+1))
+            self.bods[iBody].rename(newBodyNames[-1],lNotify=lNotify)
+        for iReg in range(len(self.regs)):
+            self.regs[iReg].rename(newNameFmt%(iReg+1),lNotify=lNotify)
+            self.regs[iReg].BodyNameReplaceInDef(oldBodyNames,newBodyNames)
 
 class MergeGeo(Geometry):
     '''
@@ -449,11 +493,11 @@ class MergeGeo(Geometry):
         new=MergeGeo()
         for myGeo in myGeos:
             new.bods=new.bods+myGeo.bods
-            new.regs=new.bods+myGeo.regs
+            new.regs=new.regs+myGeo.regs
             new.regCont=new.regCont+myGeo.regCont
             new.regCent=new.regCent+myGeo.regCent
         if (myTitle is None):
-            myTitle="merging geometries"
+            myTitle="appended geometries"
         new.title=myTitle
         return new
 
@@ -463,10 +507,10 @@ class MergeGeo(Geometry):
         converting an existing Geometry instance into a MergeGeo instance
         '''
         outMergeGeo=MergeGeo()
-        outMergeGeo.bods=inGeo.bods
-        outMergeGeo.title=inGeo.title
+        outMergeGeo.bods=deepcopy(inGeo.bods)
+        outMergeGeo.title=deepcopy(inGeo.title)
         for tmpReg in inGeo.regs:
-            outMergeGeo.addReg(tmpReg)
+            outMergeGeo.addReg(deepcopy(tmpReg))
         return outMergeGeo
 
     @staticmethod
@@ -573,10 +617,9 @@ class MergeGeo(Geometry):
         return newGeom
 
     @staticmethod
-    def BuildGriddedGeo_SphericalShell(myGrid,myProtoList,myProtoGeos):
+    def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,lDebug=True):
         '''
-        This method defines a FLUKA geometry representing a grid of objects
-           distributed on a spherical shell.
+        This method defines a FLUKA geometry representing a grid of objects.
 
         input parameters:
         - grid: an instance of a Grid() class, i.e. a list of locations;
@@ -588,7 +631,32 @@ class MergeGeo(Geometry):
         '''
         myGeos=[]
         # loop over locations, to clone prototypes
-        # return 
+        for iLoc,myLoc in enumerate(myGrid):
+            if (myProtoList[iLoc] not in myProtoGeos):
+                print("MergeGeo.BuildGriddedGeo_SphericalShell(): unknown prototype %s!"%(\
+                        myProtoList[iLoc]))
+                exit(1)
+            # - clone prototype
+            myGeo=MergeGeo.ImportFromGeometry(myProtoGeos[myProtoList[iLoc]])
+            # - move clone to requested location/orientation
+            myGeo.solidTrasform(dd=myLoc.ret("POINT"),myMat=myLoc.ret("MATRIX"),lDebug=lDebug)
+            # - flag the outer region
+            outReg,iOutReg=myGeo.ret("region","OUTER")
+            myGeo.regCont[iOutReg]=-1
+            myGeo.regCent[iOutReg]=myLoc.ret("POINT")
+            # - rename the clone
+            baseName="GR%03d"%(iLoc+1)
+            myGeo.rename(baseName)
+            # - notify the user about original prototype and location
+            myGeo.headMe("* \n"+ \
+                         "* "+"="*108+"\n"+ \
+                         "* GRID cell # %3d - family name: %s - prototype: %s\n"%(\
+                            iLoc+1,baseName,myProtoList[iLoc])+ \
+                         "* "+myLoc.echo(myFmt="% 13.6E",mySep="\n* ") + \
+                         "-"*108 )
+            # - append clone to list of geometries
+            myGeos.append(myGeo)
+        # return merged geometry
         return MergeGeo.appendGeometries(myGeos)
     
 def acquireGeometries(fileNames,geoNames=None):
@@ -626,9 +694,6 @@ if (__name__=="__main__"):
     # myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
     # caloCrysGeo.solidTrasform(dd=[0,10,-20],myMat=myMat)
     # caloCrysGeo.echo("pippo.inp")
-    # - acquire geometries
-    fileNames=[ "caloCrys.inp","caloCrys.inp" ]
-    myGeometries=acquireGeometries(fileNames,geoNames=["pippo","pluto"]);
     
     # - test generation of geometry
     R=500
@@ -638,5 +703,16 @@ if (__name__=="__main__"):
     NT=2      # number of steps (i.e. entities)
     Pmax=2    # phi [degs] --> range: -Pmax:Pmax
     NP=2      # number of steps (i.e. entities)
+
+    # - hive geometry
     HiveGeo=MergeGeo.DefineHive_SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
     HiveGeo.echo("hive.inp")
+
+    # - gridded crystals
+    #   acquire geometries
+    fileNames=[ "caloCrys.inp" ] ; geoNames=fileNames
+    myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames);
+    cellGrid=Grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
+    myProtoList=[ "caloCrys.inp" for ii in range(len(cellGrid)) ]
+    GridGeo=MergeGeo.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,lDebug=lDebug)
+    GridGeo.echo("grid.inp")
