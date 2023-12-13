@@ -4,7 +4,7 @@
 
 import numpy as np
 import myMath
-import grid
+from grid import Grid, Hive
 
 class Body:
     '''
@@ -92,7 +92,7 @@ class Body:
             print("please provide me with a 3D traslation array!")
             exit(1)
                 
-    def rotate(self,myMat=None,myTheta=None,myAxis=3,lDegs=True,lDebug=True):
+    def rotate(self,myMat=None,myTheta=None,myAxis=3,lDegs=True,lDebug=False):
         if (myMat is not None):
             self.P=myMat.mulArr(self.P,lDebug=lDebug)
             self.V=myMat.mulArr(self.V,lDebug=lDebug)
@@ -323,126 +323,7 @@ class Geometry():
         return newGeom
 
     @staticmethod
-    def DefineHive_SphericalShell(RRs,TTs,PPs,tmpTitle="Hive for a spherical shell"):
-        '''
-        This method defines a the hive for a grid on a spherical shell.
-
-        The grid is described in spherical coordinates:
-        - r [cm];
-        - theta [degs]: angle in yz-plane (positive when pointing towards y>0);
-        - phi [degs]: angle in xz-plane (positive when pointing towards x>0).
-
-        The grid is centred around the z-axis and symmetric in the two
-          directions, up/down (y>0/y<0), left/right (x>0/x<0).
-
-        The hive is delimited:
-        - radially, by spheres;
-        - on theta, by rotated XZPs;
-        - on phi, by rotated YZPs;
-
-        RRs, TTs, and PPs must be in increasing order
-        '''
-        print("Preparing the hive for a spherical shell...")
-        
-        print("...check of input info...")
-        for tmpR in RRs:
-            if (tmpR<0.0):
-                print("Geometry.DefineHive_SphericalShell(): Error negative R: %g<0!"%(tmpR))
-                exit(1)
-        if ((TTs[-1]-TTs[0])>180):
-            print("Geometry.DefineHive_SphericalShell(): Theta range too large: %g>180!"%(TTs[-1]-TTs[0]))
-            exit(1)
-        if ((PPs[-1]-PPs[0])>180):
-            print("Geometry.DefineHive_SphericalShell(): Theta range too large: %g>180!"%(PPs[-1]-PPs[0]))
-            exit(1)
-                
-        newGeom=Geometry()
-
-        print("...generating bodies...")
-        spheres=[]
-        for ii,RR in enumerate(RRs,1):
-            tmpBD=Body()
-            tmpBD.bName="HVRAD%03i"%(ii)
-            tmpBD.bType="SPH"
-            tmpBD.Rs[0]=RR
-            tmpBD.comment="* Hive radial boundary at R[cm]=%g"%(RR)
-            spheres.append(tmpBD)
-        spheres[0].comment="* \n"+spheres[0].comment
-        thetas=[]
-        for ii,TT in enumerate(TTs,1):
-            tmpBD=Body()
-            tmpBD.bName="HVTHT%03i"%(ii)
-            tmpBD.V=np.array([0.0,1.0,0.0])
-            tmpBD.rotate(myMat=None,myTheta=-TT,myAxis=1,lDegs=True)
-            tmpBD.comment="* Hive theta boundary at theta[deg]=%g"%(TT)
-            thetas.append(tmpBD)
-        thetas[0].comment="* \n"+thetas[0].comment
-        phis=[]
-        for ii,PP in enumerate(PPs,1):
-            tmpBD=Body()
-            tmpBD.bName="HVPHI%03i"%(ii)
-            tmpBD.V=np.array([1.0,0.0,0.0])
-            tmpBD.rotate(myMat=None,myTheta=PP,myAxis=2,lDegs=True)
-            tmpBD.comment="* Hive phi boundary at phi[deg]=%g"%(PP)
-            phis.append(tmpBD)
-        phis[0].comment="* \n"+phis[0].comment
-        newGeom.bods=spheres+thetas+phis
-
-        print("...generating regions...")
-        # - outside hive
-        tmpReg=Region()
-        tmpReg.rName="HV_OUTER"
-        tmpReg.material="VACUUM"
-        tmpReg.definition=''' | +%-8s | -%-8s
-                 | +%-8s -%-8s -%-8s
-                 | +%-8s -%-8s +%-8s
-                 | +%-8s -%-8s +%-8s -%-8s +%-8s
-                 | +%-8s -%-8s +%-8s -%-8s -%-8s
-'''%(spheres[0].bName,spheres[-1].bName, \
-     spheres[-1].bName,spheres[0].bName, thetas[-1].bName, \
-     spheres[-1].bName,spheres[0].bName, thetas[ 0].bName, \
-     spheres[-1].bName,spheres[0].bName, thetas[-1].bName, thetas[ 0].bName, phis[ 0].bName, \
-     spheres[-1].bName,spheres[0].bName, thetas[-1].bName, thetas[ 0].bName, phis[-1].bName  )
-        tmpReg.comment="* region outside hive"
-        newGeom.addReg(tmpReg)
-        # - inside hive
-        iHive=0
-        for iR in range(1,len(spheres)):
-            for iT in range(1,len(thetas)):
-                for iP in range(1,len(phis)):
-                    iHive=iHive+1
-                    tmpReg=Region()
-                    tmpReg.rName="HVCL%04i"%(iHive)
-                    tmpReg.material="VACUUM"
-                    tmpReg.definition='+%-8s -%-8s +%-8s -%-8s +%-8s -%-8s'%\
-                        (spheres[iR].bName,spheres[iR-1].bName,\
-                         thetas [iT].bName,thetas [iT-1].bName,\
-                         phis   [iP].bName,phis   [iP-1].bName)
-                    tmpReg.comment="* - hive region: R[cm]=[%g:%g], theta[deg]=[%g:%g], phi[deg]=[%g:%g]"%(RRs[iR],RRs[iR-1],TTs[iR],TTs[iR-1],PPs[iR],PPs[iR-1])
-                    newGeom.addReg(tmpReg)
-
-        newGeom.setTitle(tmpTitle=tmpTitle)
-        return newGeom
-
-    @staticmethod
-    def BuildGriddedGeo_SphericalShell(myGrid,myProtoList,myProtoGeos):
-        '''
-        This method defines a FLUKA geometry representing a grid of objects
-           distributed on a spherical shell.
-
-        input parameters:
-        - grid: an instance of a GRID() class, i.e. a list of locations;
-        - myProtoList: this list states which prototype should be used at each
-                       location. NB: len(myProtoList)=len(myGrid);
-        - myProtoGeos: dictionary of actual prototype geometries. The unique
-                       entries of myProtoList are the full set or a subset of
-                       the keys of this dictionary;
-        '''
-        myGeos=[]
-        return Geometry.mergeGeometries(myGeos)
-    
-    @staticmethod
-    def mergeGeometries(myGeos):
+    def appendGeometries(myGeos,myTitle=None):
         '''
         Barely appending geometries one to another;
         '''
@@ -450,6 +331,9 @@ class Geometry():
         for myGeo in myGeos:
             new.bods=new.bods+myGeo.bods
             new.regs=new.bods+myGeo.regs
+        if (myTitle is None):
+            myTitle="merging geometries"
+        new.title=myTitle
         return new
 
     def echo(self,oFileName,lSplit=False,what="all",dMode="w"):
@@ -535,7 +419,178 @@ class Geometry():
         if (myMat is None and myTheta is None and dd is None):
             print("...no transformation provided!")
         print("...done.")
-            
+
+class MergeGeo(Geometry):
+    '''
+    A dedicated class for geometries that should be merged with
+      others, e.g. clones arranged on a grid or the hive containing
+      them
+    '''
+    def __init__(self):
+        Geometry.__init__(self)
+        self.regCont=[]  # containment indicator (1 per region):
+                         #    outer region: -1; regular region: 0; cell region: 1;
+        self.regCent=[]  # central point of cell (a 3D array per region)
+
+    def addReg(self,tmpReg,regCont=0,regCent=[0.0,0.0,0.0]):
+        '''
+        overriding Geometry.addReg(self,tmpReg)
+        '''
+        self.regs.append(tmpReg)
+        self.regCont.append(regCont)
+        self.regCent.append(np.array(regCent))
+
+    @staticmethod
+    def appendGeometries(myGeos,myTitle=None):
+        '''
+        overriding Geometry.appendGeometries(myGeos,myTitle)
+        myGeos is a list of MergeGeo instances
+        '''
+        new=MergeGeo()
+        for myGeo in myGeos:
+            new.bods=new.bods+myGeo.bods
+            new.regs=new.bods+myGeo.regs
+            new.regCont=new.regCont+myGeo.regCont
+            new.regCent=new.regCent+myGeo.regCent
+        if (myTitle is None):
+            myTitle="merging geometries"
+        new.title=myTitle
+        return new
+
+    @staticmethod
+    def ImportFromGeometry(inGeo):
+        '''
+        converting an existing Geometry instance into a MergeGeo instance
+        '''
+        outMergeGeo=MergeGeo()
+        outMergeGeo.bods=inGeo.bods
+        outMergeGeo.title=inGeo.title
+        for tmpReg in inGeo.regs:
+            outMergeGeo.addReg(tmpReg)
+        return outMergeGeo
+
+    @staticmethod
+    def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,tmpTitle="Hive for a spherical shell",lDebug=True):
+        '''
+        This method defines the hive for a grid on a spherical shell.
+
+        The grid is described in spherical coordinates:
+        - r [cm];
+        - theta [degs]: angle in yz-plane (positive when pointing towards y>0);
+        - phi [degs]: angle in xz-plane (positive when pointing towards x>0).
+        The grid is centred around the z-axis.
+
+        NR, NT, NP are number of points (cell centers) along r, theta and phi
+          in the grid; therefore, the number of steps in the grid are NR-1,
+          NT-1, NP-1. Similarly, the number of bodies that limit the grid
+          along r, theta and phy are NR+1, NT+1 and NP+1
+
+        The hive is delimited:
+        - radially, by spheres;
+        - on theta, by rotated XZPs;
+        - on phi, by rotated YZPs;
+        '''
+        
+        print("Preparing the hive for a spherical shell...")
+        
+        print("...generating the grid of cells...")
+        cellGrid=Grid.SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
+        print("...defining hive boundaries...")
+        myHive=Hive.SphericalHive(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
+        RRs,TTs,PPs=myHive.ret(myWhat="all")
+
+        print("...generating FLUKA geometry...")
+        newGeom=MergeGeo()
+        
+        print("   ...bodies...")
+        spheres=[]
+        for ii,RR in enumerate(RRs,1):
+            tmpBD=Body()
+            tmpBD.bName="HVRAD%03i"%(ii)
+            tmpBD.bType="SPH"
+            tmpBD.Rs[0]=RR
+            tmpBD.comment="* Hive radial boundary at R[cm]=%g"%(RR)
+            spheres.append(tmpBD)
+        spheres[0].comment="* \n"+spheres[0].comment
+        thetas=[]
+        for ii,TT in enumerate(TTs,1):
+            tmpBD=Body()
+            tmpBD.bName="HVTHT%03i"%(ii)
+            tmpBD.V=np.array([0.0,1.0,0.0])
+            tmpBD.rotate(myMat=None,myTheta=-TT,myAxis=1,lDegs=True,lDebug=lDebug)
+            tmpBD.comment="* Hive theta boundary at theta[deg]=%g"%(TT)
+            thetas.append(tmpBD)
+        thetas[0].comment="* \n"+thetas[0].comment
+        phis=[]
+        for ii,PP in enumerate(PPs,1):
+            tmpBD=Body()
+            tmpBD.bName="HVPHI%03i"%(ii)
+            tmpBD.V=np.array([1.0,0.0,0.0])
+            tmpBD.rotate(myMat=None,myTheta=PP,myAxis=2,lDegs=True,lDebug=lDebug)
+            tmpBD.comment="* Hive phi boundary at phi[deg]=%g"%(PP)
+            phis.append(tmpBD)
+        phis[0].comment="* \n"+phis[0].comment
+        newGeom.bods=spheres+thetas+phis
+
+        print("   ...regions...")
+        # - outside hive
+        tmpReg=Region()
+        tmpReg.rName="HV_OUTER"
+        tmpReg.material="VACUUM"
+        tmpReg.definition=''' | +%-8s | -%-8s
+                 | +%-8s -%-8s -%-8s
+                 | +%-8s -%-8s +%-8s
+                 | +%-8s -%-8s +%-8s -%-8s +%-8s
+                 | +%-8s -%-8s +%-8s -%-8s -%-8s
+'''%(spheres[0].bName,spheres[-1].bName, \
+     spheres[-1].bName,spheres[0].bName, thetas[-1].bName, \
+     spheres[-1].bName,spheres[0].bName, thetas[ 0].bName, \
+     spheres[-1].bName,spheres[0].bName, thetas[-1].bName, thetas[ 0].bName, phis[ 0].bName, \
+     spheres[-1].bName,spheres[0].bName, thetas[-1].bName, thetas[ 0].bName, phis[-1].bName  )
+        tmpReg.comment="* region outside hive"
+        newGeom.addReg(tmpReg,regCont=-1)
+        # - inside hive
+        iHive=0
+        for iR in range(1,len(spheres)):
+            for iT in range(1,len(thetas)):
+                for iP in range(1,len(phis)):
+                    tmpReg=Region()
+                    tmpReg.rName="HVCL%04i"%(iHive)
+                    tmpReg.material="VACUUM"
+                    tmpReg.definition='+%-8s -%-8s +%-8s -%-8s +%-8s -%-8s'%\
+                        (spheres[iR].bName,spheres[iR-1].bName,\
+                         thetas [iT].bName,thetas [iT-1].bName,\
+                         phis   [iP].bName,phis   [iP-1].bName)
+                    tmpComment=             "* - hive region %4d: R[cm]=[%g:%g], theta[deg]=[%g:%g], phi[deg]=[%g:%g]"%(
+                        iHive,RRs[iR-1],RRs[iR],TTs[iT-1],TTs[iT],PPs[iP-1],PPs[iP])
+                    myCenter=cellGrid.ret(myWhat="POINT",iEl=iHive)
+                    tmpComment=tmpComment+"\n*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2])
+                    tmpReg.comment=tmpComment
+                    newGeom.addReg(tmpReg,regCont=1,regCent=myCenter)
+                    iHive=iHive+1
+
+        newGeom.setTitle(tmpTitle=tmpTitle)
+        return newGeom
+
+    @staticmethod
+    def BuildGriddedGeo_SphericalShell(myGrid,myProtoList,myProtoGeos):
+        '''
+        This method defines a FLUKA geometry representing a grid of objects
+           distributed on a spherical shell.
+
+        input parameters:
+        - grid: an instance of a Grid() class, i.e. a list of locations;
+        - myProtoList: this list states which prototype should be used at each
+                       location. NB: len(myProtoList)=len(myGrid);
+        - myProtoGeos: dictionary of actual prototype geometries. The unique
+                       entries of myProtoList are the full set or a subset of
+                       the keys of this dictionary;
+        '''
+        myGeos=[]
+        # loop over locations, to clone prototypes
+        # return 
+        return MergeGeo.appendGeometries(myGeos)
+    
 def acquireGeometries(fileNames,geoNames=None):
     '''
     A simple function to parse a series of geometry files and
@@ -565,7 +620,7 @@ def acquireGeometries(fileNames,geoNames=None):
     return myGeos
 
 if (__name__=="__main__"):
-    lDebug=True
+    lDebug=False
     # # - manipulate a geometry
     # caloCrysGeo=Geometry.fromInp("caloCrys.inp")
     # myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
@@ -575,13 +630,13 @@ if (__name__=="__main__"):
     fileNames=[ "caloCrys.inp","caloCrys.inp" ]
     myGeometries=acquireGeometries(fileNames,geoNames=["pippo","pluto"]);
     
-    # # - test generation of hive
-    # R=500
-    # dR=50
-    # Tmax=30   # theta [degs] --> range: -Tmax:Tmax
-    # NT=20     # number of steps (i.e. entities)
-    # Pmax=20   # phi [degs] --> range: -Pmax:Pmax
-    # NP=20     # number of steps (i.e. entities)
-    # RRs,TTs,PPs=grid.DefHiveBoundaries_SphericalShell_OneLayer(R,dR,Tmax,NT,Pmax,NP)
-    # HiveGeo=Geometry.DefineHive_SphericalShell(RRs,TTs,PPs,tmpTitle="Hive for a single-layer spherical shell")
-    # HiveGeo.echo("pippo.inp")
+    # - test generation of geometry
+    R=500
+    dR=50
+    NR=1
+    Tmax=3    # theta [degs] --> range: -Tmax:Tmax
+    NT=2      # number of steps (i.e. entities)
+    Pmax=2    # phi [degs] --> range: -Pmax:Pmax
+    NP=2      # number of steps (i.e. entities)
+    HiveGeo=MergeGeo.DefineHive_SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
+    HiveGeo.echo("hive.inp")
