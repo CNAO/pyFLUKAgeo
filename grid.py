@@ -28,17 +28,20 @@ class Location:
         elif (what.upper()=="LABEL"):
             return self.label
 
-    def echo(self,myFmt="% .6E"):
+    def echo(self,myFmt="% 13.6E",mySep="; "):
         buf="P=["
         for tmpX in self.P:
             buf=buf+" "+myFmt%(tmpX)
-        buf=buf+" ]; W=|"
+        buf=buf+" ]"+mySep+"W=|"
         for jj in range(self.W.nDim):
             for ii in range(self.W.nDim):
                 buf=buf+" "+myFmt%(self.W[ii,jj])
             if (jj<self.W.nDim-1):
-                buf=buf+" ;"
-        buf=buf+" | label=\"%s\";"%(self.label)
+                if ("\n" in mySep):
+                    buf=buf+" | "+mySep+"  |"
+                else:
+                    buf=buf+" "+mySep
+        buf=buf+" | "+mySep+"label=\"%s\""%(self.label)+mySep
         return buf
         
 class Grid:
@@ -71,7 +74,7 @@ class Grid:
     def AddLoc(self,myP=[0.,0.,0.],myW=myMath.UnitMat,myLab=""):
         self.locs.append(Location(myP=myP,myW=myW,myLab=myLab))
 
-    def echo(self,myFmt="% .6E"):
+    def echo(self,myFmt="% 13.6E"):
         buf=""
         for myLoc in self.locs:
             buf=buf+myLoc.echo(myFmt=myFmt)+"\n"
@@ -210,12 +213,12 @@ class Hive:
 
     @staticmethod
     def SphericalHive_OneLayer(R,dR,Tmax,NT,Pmax,NP,lDebug=False):
-    '''
-    Special case of a spherical hive, with:
-    - only 1 radial layer;
-    - symmetric angular ranges;
-    '''
-    return Hive.SphericalHive(R,R+dR,1,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
+        '''
+        Special case of a spherical hive, with:
+        - only 1 radial layer;
+        - symmetric angular ranges;
+        '''
+        return Hive.SphericalHive(R,R+dR,1,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
 
 if ( __name__ == "__main__" ):
     # perform some tests
