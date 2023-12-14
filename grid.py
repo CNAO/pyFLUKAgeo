@@ -155,33 +155,19 @@ class Hive:
                 exit(1)
         self.hType=hType
 
-    def ret(self,myWhat="all"):
-        if (self.hType.upper()=="SPHERE"):
-            if (myWhat.upper()=="RRS"):
-                return self.RRs
-            elif (myWhat.upper()=="TTS"):
-                return self.TTs
-            elif (myWhat.upper()=="PPS"):
-                return self.PPs
-            elif (myWhat.upper()=="ALL"):
-                return self.ret(myWhat="RRs"), \
-                       self.ret(myWhat="TTs"), \
-                       self.ret(myWhat="PPs")
-            else:
-                print("Hive.ret(): what to return? %s"%(myWhat))
+class SphericalHive(Hive):
+    '''
+    Class for creating a spherical hive - actually a spherical shell,
+      for which a sphere is a special case.
 
-    @staticmethod
-    def SphericalHive(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=False):
-        '''
-        Method for creating a spherical hive - actually a spherical shell,
-          for which a sphere is a special case.
+    All the input info refer to the respective spherical grid of objects.
+      Please see the docstring of the Grid.SphericalShell() method.
+    The number of interfaces in the hive along r, theta and phy
+      are NR+1, NT+1 and NP+1
+    '''
 
-        All the input info refer to the respective spherical grid of objects.
-          Please see the docstring of the Grid.SphericalShell() method.
-        The number of interfaces in the hive along r, theta and phy
-          are NR+1, NT+1 and NP+1
-        '''
-        newHive=Hive("SPHERE")
+    def __init__(self,Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=False):
+        Hive.__init__(self,"SPHERE")
         hdR=(Rmax-Rmin)
         if (NR==1):
             hRmax=Rmax-hdR/2.; hRmin=Rmin-hdR/2.
@@ -206,10 +192,9 @@ class Hive:
             print("* theta[deg]=[%g:%g:%g];"%(hTmin,hdT,hTmax))
             print("* phi[deg]=[%g:%g:%g];"%(hPmin,hdP,hPmax))
         # NB: np.linspace: num is number of points
-        newHive.RRs=np.linspace(hRmin,hRmax,num=NR+1)
-        newHive.TTs=np.linspace(hTmin,hTmax,num=NT+1)
-        newHive.PPs=np.linspace(hPmin,hPmax,num=NP+1)
-        return newHive
+        self.RRs=np.linspace(hRmin,hRmax,num=NR+1)
+        self.TTs=np.linspace(hTmin,hTmax,num=NT+1)
+        self.PPs=np.linspace(hPmin,hPmax,num=NP+1)
 
     @staticmethod
     def SphericalHive_OneLayer(R,dR,Tmax,NT,Pmax,NP,lDebug=False):
@@ -218,7 +203,21 @@ class Hive:
         - only 1 radial layer;
         - symmetric angular ranges;
         '''
-        return Hive.SphericalHive(R,R+dR,1,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
+        return SphericalHive(R,R+dR,1,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
+
+    def ret(self,myWhat="all"):
+        if (myWhat.upper()=="RRS"):
+            return self.RRs
+        elif (myWhat.upper()=="TTS"):
+            return self.TTs
+        elif (myWhat.upper()=="PPS"):
+            return self.PPs
+        elif (myWhat.upper()=="ALL"):
+            return self.ret(myWhat="RRs"), \
+                   self.ret(myWhat="TTs"), \
+                   self.ret(myWhat="PPs")
+        else:
+            print("SphericalHive.ret(): what to return? %s"%(myWhat))
 
 if ( __name__ == "__main__" ):
     # perform some tests

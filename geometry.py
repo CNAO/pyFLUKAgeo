@@ -6,7 +6,7 @@ import numpy as np
 from copy import deepcopy
 
 import myMath
-from grid import Grid, Hive
+import grid
 
 class Body:
     '''
@@ -538,9 +538,9 @@ class MergeGeo(Geometry):
         print("Preparing the hive for a spherical shell...")
         
         print("...generating the grid of cells...")
-        cellGrid=Grid.SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
+        cellGrid=grid.Grid.SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
         print("...defining hive boundaries...")
-        myHive=Hive.SphericalHive(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
+        myHive=grid.SphericalHive(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
         RRs,TTs,PPs=myHive.ret(myWhat="all")
 
         print("...generating FLUKA geometry...")
@@ -658,6 +658,26 @@ class MergeGeo(Geometry):
             myGeos.append(myGeo)
         # return merged geometry
         return MergeGeo.appendGeometries(myGeos)
+
+    @staticmethod
+    def MergeGeos(hiveGeo,gridGeo):
+        '''
+        This method merges one FLUKA geometry onto another one.
+
+        input parameters:
+        - hiveGeo: MergeGeo instance of the hive;
+        - gridGeo: MergeGeo instance of the grid of objects.
+
+        The two geometries must not have common names - no check is performed
+          for the time being.
+
+        All the regions of gridGeo with regCont==-1 will be matched with regions
+          of hiveGeo with regCont==1; a one-to-one mapping is established based
+          on the regCent arrays;
+        '''
+        myGeos=[]
+        # return merged geometry
+        return MergeGeo.appendGeometries(myGeos)
     
 def acquireGeometries(fileNames,geoNames=None):
     '''
@@ -712,7 +732,7 @@ if (__name__=="__main__"):
     #   acquire geometries
     fileNames=[ "caloCrys.inp" ] ; geoNames=fileNames
     myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames);
-    cellGrid=Grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
+    cellGrid=grid.Grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
     myProtoList=[ "caloCrys.inp" for ii in range(len(cellGrid)) ]
     GridGeo=MergeGeo.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,lDebug=lDebug)
     GridGeo.echo("grid.inp")
