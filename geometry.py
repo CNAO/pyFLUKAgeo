@@ -136,6 +136,7 @@ class Region():
       definition lines, NO comments headed by !
     - a region definition always starts at column 1;
     - no check of length of lines for region definition;
+    - no support for LATTICE;
     - ASSIGNMA cards: only 1:1 material:region assignment, NO material
       assignment for decay radiation simulation, NO magnetic/electric fields;
     '''
@@ -146,6 +147,15 @@ class Region():
         self.definition=""
         self.material="BLACKHOLE"
         self.comment=""
+        # additional fields
+        self.initCont()
+
+    def initCont(self,rCont=0,rCent=[0.0,0.0,0.0]):
+        self.rCont=rCont # containment indicator (1 per region):
+                         # -1: region to be contained into/sized by another one
+                         #  0: regular region (neither contains nor it is contained)
+                         #  1: cell region (it contains another region)
+        self.rCent=rCent # central point of one or more region (3D array)
 
     @staticmethod
     def fromBuf(myBuffer):
@@ -222,28 +232,33 @@ class Region():
     def merge(self,newReg,spacing=" "*17):
         # warn user in comment
         self.tailMe("* --> merged with region %s <--"%(newReg.rName))
+        # merge comments
+        if (len(new.comment)>0):
+            self.taileMe(new.comment)
         # merge definitions
         mergedDef=""
         newRegZones=newReg.definition.split("|")
         myRegZones=self.definition.split("|")
         lFirst=True
-        for myRegZone in myRegZones:
+        for ii,myRegZone in enumerate(myRegZones,1):
             sMyRegZone=myRegZone.strip()
             if (len(sMyRegZone)>0):
-                for newRegZone in newRegZones:
+                for jj,newRegZone in enumerate(newRegZones,1):
                     sNewRegZone=newRegZone.strip()
                     if (len(sNewRegZone)>0):
+                        tmpComment="* merging zone %s:%d into %s:%d"%(\
+                                newReg.rName,jj,self.rName,ii)
                         if (lFirst):
+                            self.tailMe(tmpComment)
                             mergedDef="| %s %s"%(sMyRegZone,sNewRegZone)
                             lFirst=False
                         else:
-                            mergedDef=mergedDef+"\n%s| %s %s"%(spacing,sMyRegZone,sNewRegZone)
+                            mergedDef=mergedDef+"\n%s"%(tmpComment)+"\n%s| %s %s"%(spacing,sMyRegZone,sNewRegZone)
         self.definition=mergedDef
-        # merge comments
-        if (len(new.comment)>0):
-            self.taileMe(new.comment)
         # merge neighbours
         self.neigh=self.neigh+newReg.neigh
+        # remove any sign of merge labelling
+        self.initCont()
 
 class Geometry():
     '''
@@ -499,28 +514,6 @@ class Geometry():
             self.regs[iReg].rename(newNameFmt%(iReg+1),lNotify=lNotify)
             self.regs[iReg].BodyNameReplaceInDef(oldBodyNames,newBodyNames)
 
-class MergeGeo(Geometry):
-    '''
-    A dedicated class for geometries that should be merged with
-      others, e.g. clones arranged on a grid or the hive containing
-      them
-    '''
-    def __init__(self):
-        Geometry.__init__(self)
-        self.rCont=[]  # containment indicator (1 per region):
-                       # -1: region to be contained into/sized by another one
-                       #  0: regular region (neither contains nor it is contained)
-                       #  1: cell region (it contains another region)
-        self.rCent=[]  # central point of one or more region (3D arrays)
-
-    def addReg(self,tmpReg,rCont=0,rCent=[0.0,0.0,0.0]):
-        '''
-        overriding Geometry.addReg(self,tmpReg)
-        '''
-        self.regs.append(tmpReg)
-        self.rCont.append(rCont)
-        self.rCent.append(np.array(rCent))
-
     def flagRegs(self,whichRegs,rCont,rCent):
         if (whichRegs is str):
             if (whichRegs.upper()=="ALL"):
@@ -533,38 +526,8 @@ class MergeGeo(Geometry):
             else:
                 regs2mod=whichRegs
         for whichReg in whichRegs:
-            outReg,iOutReg=self.ret("region",whichReg)
-            self.rCont[iOutReg]=rCont
-            self.rCent[iOutReg]=rCent
-
-    @staticmethod
-    def appendGeometries(myGeos,myTitle=None):
-        '''
-        overriding Geometry.appendGeometries(myGeos,myTitle)
-        myGeos is a list of MergeGeo instances
-        '''
-        new=MergeGeo()
-        for myGeo in myGeos:
-            new.bods=new.bods+myGeo.bods
-            new.regs=new.regs+myGeo.regs
-            new.rCont=new.rCont+myGeo.rCont
-            new.rCent=new.rCent+myGeo.rCent
-        if (myTitle is None):
-            myTitle="appended geometries"
-        new.title=myTitle
-        return new
-
-    @staticmethod
-    def ImportFromGeometry(inGeo):
-        '''
-        converting an existing Geometry instance into a MergeGeo instance
-        '''
-        outMergeGeo=MergeGeo()
-        outMergeGeo.bods=deepcopy(inGeo.bods)
-        outMergeGeo.title=deepcopy(inGeo.title)
-        for tmpReg in inGeo.regs:
-            outMergeGeo.addReg(deepcopy(tmpReg))
-        return outMergeGeo
+            outReg,iReg=self.ret("region",whichReg)
+            outReg.initCont(rCont=rCont,rCent=rCent)
 
     @staticmethod
     def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,tmpTitle="Hive for a spherical shell",lDebug=True):
@@ -597,7 +560,7 @@ class MergeGeo(Geometry):
         RRs,TTs,PPs=myHive.ret(myWhat="all")
 
         print("...generating FLUKA geometry...")
-        newGeom=MergeGeo()
+        newGeom=Geometry()
         
         print("   ...bodies...")
         spheres=[]
@@ -663,7 +626,8 @@ class MergeGeo(Geometry):
                     myCenter=cellGrid.ret(myWhat="POINT",iEl=iHive)
                     tmpComment=tmpComment+"\n*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2])
                     tmpReg.comment=tmpComment
-                    newGeom.addReg(tmpReg,rCont=1,rCent=myCenter)
+                    tmpReg.initCont(rCont=1,rCent=myCenter)
+                    newGeom.addReg(tmpReg)
                     iHive=iHive+1
 
         newGeom.setTitle(tmpTitle=tmpTitle)
@@ -690,11 +654,11 @@ class MergeGeo(Geometry):
         # loop over locations, to clone prototypes
         for iLoc,myLoc in enumerate(myGrid):
             if (myProtoList[iLoc] not in myProtoGeos):
-                print("MergeGeo.BuildGriddedGeo_SphericalShell(): unknown prototype %s!"%(\
+                print("Geometry.BuildGriddedGeo_SphericalShell(): unknown prototype %s!"%(\
                         myProtoList[iLoc]))
                 exit(1)
             # - clone prototype
-            myGeo=MergeGeo.ImportFromGeometry(myProtoGeos[myProtoList[iLoc]])
+            myGeo=deepcopy(myProtoGeos[myProtoList[iLoc]])
             # - move clone to requested location/orientation
             myGeo.solidTrasform(dd=myLoc.ret("POINT"),myMat=myLoc.ret("MATRIX"),lDebug=lDebug)
             # - flag the region(s) outside the prototypes or that should be sized
@@ -713,7 +677,7 @@ class MergeGeo(Geometry):
             # - append clone to list of geometries
             myGeos.append(myGeo)
         # return merged geometry
-        return MergeGeo.appendGeometries(myGeos)
+        return Geometry.appendGeometries(myGeos)
 
     @staticmethod
     def MergeGeos(hiveGeo,gridGeo):
@@ -721,8 +685,8 @@ class MergeGeo(Geometry):
         This method merges one FLUKA geometry onto another one.
 
         input parameters:
-        - hiveGeo: MergeGeo instance of the hive;
-        - gridGeo: MergeGeo instance of the grid of objects.
+        - hiveGeo: Geometry instance of the hive;
+        - gridGeo: Geometry instance of the grid of objects.
 
         The two geometries must not have common names - no check is performed
           for the time being.
@@ -731,15 +695,15 @@ class MergeGeo(Geometry):
           of hiveGeo with rCont==1; a one-to-one mapping is established based
           on the rCent arrays. The merged regions will still belong to gridGeo
           and the respective region in hiveGeo will disappear.
-
-        Similarly, all regions of gridGeo with rCont==-2 will be matched with regions
-          of hiveGeo with rCont==1; a one-to-one mapping is established based
-          on the rCent arrays. The merged regions will still belong to gridGeo
-          and the respective region in hiveGeo will disappear.
         '''
         myGeos=[]
-        # return merged geometry
-        return MergeGeo.appendGeometries(myGeos)
+        iRhg=[ ii for ii,mReg in enumerate(hiveGeo.regs) if hiveGeo.rCont[ii]==1 ]
+        cRhg=[ mReg.rCent for ii,mReg in enumerate(hiveGeo.regs) if hiveGeo.rCont[ii]==1 ]
+        print(iRhg)
+        print(cRhg)
+        return
+        # # return merged geometry
+        # return MergeGeo.appendGeometries(myGeos)
     
 def acquireGeometries(fileNames,geoNames=None):
     '''
@@ -787,7 +751,7 @@ if (__name__=="__main__"):
     NP=2      # number of steps (i.e. entities)
 
     # - hive geometry
-    HiveGeo=MergeGeo.DefineHive_SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
+    HiveGeo=Geometry.DefineHive_SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
     HiveGeo.echo("hive.inp")
 
     # - gridded crystals
@@ -796,5 +760,8 @@ if (__name__=="__main__"):
     myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames);
     cellGrid=grid.Grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
     myProtoList=[ "caloCrys.inp" for ii in range(len(cellGrid)) ]
-    GridGeo=MergeGeo.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lDebug=lDebug)
+    GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lDebug=lDebug)
     GridGeo.echo("grid.inp")
+
+    # - merge geometries
+    mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo)
