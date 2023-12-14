@@ -135,6 +135,7 @@ class Region():
     - support only for preceding comments or commented lines between region
       definition lines, NO comments headed by !
     - a region definition always starts at column 1;
+    - no check of length of lines for region definition;
     - ASSIGNMA cards: only 1:1 material:region assignment, NO material
       assignment for decay radiation simulation, NO magnetic/electric fields;
     '''
@@ -218,6 +219,32 @@ class Region():
             return myBuf+"%-8s   %4d %s" % \
                 ( self.rName, self.neigh, self.definition )
 
+    def merge(self,newReg,spacing=" "*17):
+        # warn user in comment
+        self.tailMe("* --> merged with region %s <--"%(newReg.rName))
+        # merge definitions
+        mergedDef=""
+        newRegZones=newReg.definition.split("|")
+        myRegZones=self.definition.split("|")
+        lFirst=True
+        for myRegZone in myRegZones:
+            sMyRegZone=myRegZone.strip()
+            if (len(sMyRegZone)>0):
+                for newRegZone in newRegZones:
+                    sNewRegZone=newRegZone.strip()
+                    if (len(sNewRegZone)>0):
+                        if (lFirst):
+                            mergedDef="| %s %s"%(sMyRegZone,sNewRegZone)
+                            lFirst=False
+                        else:
+                            mergedDef=mergedDef+"\n%s| %s %s"%(spacing,sMyRegZone,sNewRegZone)
+        self.definition=mergedDef
+        # merge comments
+        if (len(new.comment)>0):
+            self.taileMe(new.comment)
+        # merge neighbours
+        self.neigh=self.neigh+newReg.neigh
+
 class Geometry():
     '''
     - name-based FLUKA geometry defition;
@@ -272,15 +299,23 @@ class Geometry():
     def ret(self,myWhat,myName):
         lFound=False
         if (myWhat.upper()=="BODY"):
-            for iEntry,myEntry in enumerate(self.bods):
-                if (myEntry.bName==myName):
-                    lFound=True
-                    break
+            if (myName.upper()=="ALL"):
+                myEntry=[ body.bName for body in self.bos ]
+                iEntry=[ ii for ii in range(len(self.bods)) ]
+            else:
+                for iEntry,myEntry in enumerate(self.bods):
+                    if (myEntry.bName==myName):
+                        lFound=True
+                        break
         elif (myWhat.upper()=="REGION"):
-            for iEntry,myEntry in enumerate(self.regs):
-                if (myEntry.rName==myName):
-                    lFound=True
-                    break
+            if (myName.upper()=="ALL"):
+                myEntry=[ reg.rName for reg in self.regs ]
+                iEntry=[ ii for ii in range(len(self.regs)) ]
+            else:
+                for iEntry,myEntry in enumerate(self.regs):
+                    if (myEntry.rName==myName):
+                        lFound=True
+                        break
         else:
             print("%s not recognised! What should I look for in the geometry?"%(myWhat))
             exit(1)
@@ -472,17 +507,35 @@ class MergeGeo(Geometry):
     '''
     def __init__(self):
         Geometry.__init__(self)
-        self.regCont=[]  # containment indicator (1 per region):
-                         #    outer region: -1; regular region: 0; cell region: 1;
-        self.regCent=[]  # central point of cell (a 3D array per region)
+        self.rCont=[]  # containment indicator (1 per region):
+                       # -1: region to be contained into/sized by another one
+                       #  0: regular region (neither contains nor it is contained)
+                       #  1: cell region (it contains another region)
+        self.rCent=[]  # central point of one or more region (3D arrays)
 
-    def addReg(self,tmpReg,regCont=0,regCent=[0.0,0.0,0.0]):
+    def addReg(self,tmpReg,rCont=0,rCent=[0.0,0.0,0.0]):
         '''
         overriding Geometry.addReg(self,tmpReg)
         '''
         self.regs.append(tmpReg)
-        self.regCont.append(regCont)
-        self.regCent.append(np.array(regCent))
+        self.rCont.append(rCont)
+        self.rCent.append(np.array(rCent))
+
+    def flagRegs(self,whichRegs,rCont,rCent):
+        if (whichRegs is str):
+            if (whichRegs.upper()=="ALL"):
+                regs2mod,iRegs2mod=myGeo.ret("region","ALL")
+            else:
+                regs2mod=[whichRegs]
+        else:
+            if ( "ALL" in [tmpStr.upper() for tmpStr in whichRegs] ):
+                regs2mod,iRegs2mod=myGeo.ret("region","ALL")
+            else:
+                regs2mod=whichRegs
+        for whichReg in whichRegs:
+            outReg,iOutReg=self.ret("region",whichReg)
+            self.rCont[iOutReg]=rCont
+            self.rCent[iOutReg]=rCent
 
     @staticmethod
     def appendGeometries(myGeos,myTitle=None):
@@ -494,8 +547,8 @@ class MergeGeo(Geometry):
         for myGeo in myGeos:
             new.bods=new.bods+myGeo.bods
             new.regs=new.regs+myGeo.regs
-            new.regCont=new.regCont+myGeo.regCont
-            new.regCent=new.regCent+myGeo.regCent
+            new.rCont=new.rCont+myGeo.rCont
+            new.rCent=new.rCent+myGeo.rCent
         if (myTitle is None):
             myTitle="appended geometries"
         new.title=myTitle
@@ -592,7 +645,7 @@ class MergeGeo(Geometry):
      spheres[-1].bName,spheres[0].bName, thetas[-1].bName, thetas[ 0].bName, phis[ 0].bName, \
      spheres[-1].bName,spheres[0].bName, thetas[-1].bName, thetas[ 0].bName, phis[-1].bName  )
         tmpReg.comment="* region outside hive"
-        newGeom.addReg(tmpReg,regCont=-1)
+        newGeom.addReg(tmpReg)
         # - inside hive
         iHive=0
         for iR in range(1,len(spheres)):
@@ -610,14 +663,14 @@ class MergeGeo(Geometry):
                     myCenter=cellGrid.ret(myWhat="POINT",iEl=iHive)
                     tmpComment=tmpComment+"\n*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2])
                     tmpReg.comment=tmpComment
-                    newGeom.addReg(tmpReg,regCont=1,regCent=myCenter)
+                    newGeom.addReg(tmpReg,rCont=1,rCent=myCenter)
                     iHive=iHive+1
 
         newGeom.setTitle(tmpTitle=tmpTitle)
         return newGeom
 
     @staticmethod
-    def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,lDebug=True):
+    def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,osRegNames=[],lDebug=True):
         '''
         This method defines a FLUKA geometry representing a grid of objects.
 
@@ -628,6 +681,10 @@ class MergeGeo(Geometry):
         - myProtoGeos: dictionary of actual prototype geometries. The unique
                        entries of myProtoList are the full set or a subset of
                        the keys of this dictionary;
+        - osRegNames:  list of regions of the prototypes expressing the outermost
+                       part of the prototypes, to be 'subtracted' from the region
+                       definition of the hive cells, that should be sized by the
+                       regions of the hive cell;
         '''
         myGeos=[]
         # loop over locations, to clone prototypes
@@ -640,18 +697,17 @@ class MergeGeo(Geometry):
             myGeo=MergeGeo.ImportFromGeometry(myProtoGeos[myProtoList[iLoc]])
             # - move clone to requested location/orientation
             myGeo.solidTrasform(dd=myLoc.ret("POINT"),myMat=myLoc.ret("MATRIX"),lDebug=lDebug)
-            # - flag the outer region
-            outReg,iOutReg=myGeo.ret("region","OUTER")
-            myGeo.regCont[iOutReg]=-1
-            myGeo.regCent[iOutReg]=myLoc.ret("POINT")
+            # - flag the region(s) outside the prototypes or that should be sized
+            #   by the hive cells
+            myGeo.flagRegs(osRegNames,-1,myLoc.ret("POINT"))
             # - rename the clone
-            baseName="GR%03d"%(iLoc+1)
+            baseName="GR%03d"%(iLoc)
             myGeo.rename(baseName)
             # - notify the user about original prototype and location
             myGeo.headMe("* \n"+ \
                          "* "+"="*108+"\n"+ \
                          "* GRID cell # %3d - family name: %s - prototype: %s\n"%(\
-                            iLoc+1,baseName,myProtoList[iLoc])+ \
+                            iLoc,baseName,myProtoList[iLoc])+ \
                          "* "+myLoc.echo(myFmt="% 13.6E",mySep="\n* ") + \
                          "-"*108 )
             # - append clone to list of geometries
@@ -671,9 +727,15 @@ class MergeGeo(Geometry):
         The two geometries must not have common names - no check is performed
           for the time being.
 
-        All the regions of gridGeo with regCont==-1 will be matched with regions
-          of hiveGeo with regCont==1; a one-to-one mapping is established based
-          on the regCent arrays;
+        All the regions of gridGeo with rCont==-1 will be matched with regions
+          of hiveGeo with rCont==1; a one-to-one mapping is established based
+          on the rCent arrays. The merged regions will still belong to gridGeo
+          and the respective region in hiveGeo will disappear.
+
+        Similarly, all regions of gridGeo with rCont==-2 will be matched with regions
+          of hiveGeo with rCont==1; a one-to-one mapping is established based
+          on the rCent arrays. The merged regions will still belong to gridGeo
+          and the respective region in hiveGeo will disappear.
         '''
         myGeos=[]
         # return merged geometry
@@ -734,5 +796,5 @@ if (__name__=="__main__"):
     myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames);
     cellGrid=grid.Grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
     myProtoList=[ "caloCrys.inp" for ii in range(len(cellGrid)) ]
-    GridGeo=MergeGeo.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,lDebug=lDebug)
+    GridGeo=MergeGeo.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lDebug=lDebug)
     GridGeo.echo("grid.inp")
