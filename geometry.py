@@ -229,12 +229,12 @@ class Region():
             return myBuf+"%-8s   %4d %s" % \
                 ( self.rName, self.neigh, self.definition )
 
-    def merge(self,newReg,spacing=" "*17):
+    def merge(self,newReg,spacing=" "*16):
         # warn user in comment
         self.tailMe("* --> merged with region %s <--"%(newReg.rName))
         # merge comments
-        if (len(new.comment)>0):
-            self.taileMe(new.comment)
+        if (len(newReg.comment)>0):
+            self.tailMe(newReg.comment)
         # merge definitions
         mergedDef=""
         newRegZones=newReg.definition.split("|")
@@ -303,13 +303,14 @@ class Geometry():
             print("...region %s NOT found in geometry!"%(myReg))
             exit(1)
 
-    def headMe(self,myString):
+    def headMe(self,myString,begLine="* \n"+"* "+"="*108,endLine="* "+"-"*108+"\n* "):
         '''
         simple method to head a string to the geometry declaration (bodies,
            regions, assignma cards)
         '''
-        self.bods[0].headMe(myString)
-        self.regs[0].headMe(myString)
+        actualString=begLine+"\n* "+myString+" \n"+endLine
+        self.bods[0].headMe(actualString)
+        self.regs[0].headMe(actualString)
             
     def ret(self,myWhat,myName):
         lFound=False
@@ -630,6 +631,7 @@ class Geometry():
                     newGeom.addReg(tmpReg)
                     iHive=iHive+1
 
+        newGeom.headMe(tmpTitle)
         newGeom.setTitle(tmpTitle=tmpTitle)
         return newGeom
 
@@ -668,25 +670,23 @@ class Geometry():
             baseName="GR%03d"%(iLoc)
             myGeo.rename(baseName)
             # - notify the user about original prototype and location
-            myGeo.headMe("* \n"+ \
-                         "* "+"="*108+"\n"+ \
-                         "* GRID cell # %3d - family name: %s - prototype: %s\n"%(\
+            myGeo.headMe("GRID cell # %3d - family name: %s - prototype: %s\n"%(\
                             iLoc,baseName,myProtoList[iLoc])+ \
-                         "* "+myLoc.echo(myFmt="% 13.6E",mySep="\n* ") + \
-                         "-"*108 )
+                         "* "+myLoc.echo(myFmt="% 13.6E",mySep="\n* ") )
             # - append clone to list of geometries
             myGeos.append(myGeo)
         # return merged geometry
         return Geometry.appendGeometries(myGeos)
 
     @staticmethod
-    def MergeGeos(hiveGeo,gridGeo):
+    def MergeGeos(hiveGeo,gridGeo,lDebug=True,myTitle=None,prec=0.001):
         '''
         This method merges one FLUKA geometry onto another one.
 
         input parameters:
         - hiveGeo: Geometry instance of the hive;
         - gridGeo: Geometry instance of the grid of objects.
+        - prec: precision of identification of points proximity [cm]
 
         The two geometries must not have common names - no check is performed
           for the time being.
@@ -696,14 +696,61 @@ class Geometry():
           on the rCent arrays. The merged regions will still belong to gridGeo
           and the respective region in hiveGeo will disappear.
         '''
-        myGeos=[]
-        iRhg=[ ii for ii,mReg in enumerate(hiveGeo.regs) if hiveGeo.rCont[ii]==1 ]
-        cRhg=[ mReg.rCent for ii,mReg in enumerate(hiveGeo.regs) if hiveGeo.rCont[ii]==1 ]
-        print(iRhg)
-        print(cRhg)
-        return
-        # # return merged geometry
-        # return MergeGeo.appendGeometries(myGeos)
+        print("merging geometries...")
+        iRhg=[ ii for ii,mReg in enumerate(hiveGeo.regs) if mReg.rCont==1 ]
+        cRhg=np.array([ mReg.rCent for ii,mReg in enumerate(hiveGeo.regs) if mReg.rCont==1 ])
+        ucRhg=np.unique(cRhg,axis=0)
+        iRgg=[ ii for ii,mReg in enumerate(gridGeo.regs) if mReg.rCont==-1 ]
+        cRgg=np.array([ mReg.rCent for ii,mReg in enumerate(gridGeo.regs) if mReg.rCont==-1 ])
+        ucRgg=np.unique(cRgg,axis=0)
+        if (lDebug):
+            print("...found %d containing regions in hive:"%(len(iRhg)))
+            print("   ...with %d unique centers!"%(len(ucRhg)))
+            print(iRhg)
+            print(cRhg)
+            print(ucRhg)
+            print("...found %d contained/sized regions in grid:"%(len(iRgg)))
+            print("   ...with %d unique centers!"%(len(ucRgg)))
+            print(iRgg)
+            print(cRgg)
+            print(ucRgg)
+        if (len(iRhg)==len(ucRhg)):
+            # for each location, only one hive region is concerned:
+            #   merge each containing hive region into the concerned
+            #   grid regions, and then remove the hive region
+            # - merge region defs
+            removeRegs=[]
+            for jRhg in iRhg:
+                for jRgg in iRgg:
+                    if (np.linalg.norm(gridGeo.regs[jRgg].rCent-hiveGeo.regs[jRhg].rCent)<prec):
+                        gridGeo.regs[jRgg].merge(hiveGeo.regs[jRhg])
+                        if (hiveGeo.regs[jRhg].rName not in removeRegs):
+                            removeRegs.append(hiveGeo.regs[jRhg].rName)
+            # - remove merged regs
+            for removeReg in removeRegs:
+                myReg,iReg=hiveGeo.ret("REGION",removeReg)
+                hiveGeo.regs.pop(iReg)
+        elif(len(iRgg)==len(ucRgg)):
+            # for each location, only one grid region is concerned:
+            #   merge each contained grid region into the concerned
+            #   hive regions, and then remove the grid region
+            # - merge region defs
+            removeRegs=[]
+            for jRgg in iRgg:
+                for jRhg in iRhg:
+                    if (np.linalg.norm(hiveGeo.regs[jRhg].rCent-gridGeo.regs[jRgg].rCent)<prec):
+                        hiveGeo.regs[jRhg].merge(gridGeo.regs[jRgg])
+                        if (gridGeo.regs[jRgg].rName not in removeRegs):
+                            removeRegs.append(gridGeo.regs[jRgg].rName)
+            # - remove merged regs
+            for removeReg in removeRegs:
+                myReg,iReg=gridGeo.ret("REGION",removeReg)
+                gridGeo.regs.pop(iReg)
+        else:
+            print("...cannot merge more than a region of the hive and more than a region of the grid for a single location!")
+            exit(1)
+        print("...done.")
+        return Geometry.appendGeometries([hiveGeo,gridGeo],myTitle=myTitle)
     
 def acquireGeometries(fileNames,geoNames=None):
     '''
@@ -742,26 +789,32 @@ if (__name__=="__main__"):
     # caloCrysGeo.echo("pippo.inp")
     
     # - test generation of geometry
-    R=500
+    R=100
     dR=50
     NR=1
-    Tmax=3    # theta [degs] --> range: -Tmax:Tmax
-    NT=2      # number of steps (i.e. entities)
-    Pmax=2    # phi [degs] --> range: -Pmax:Pmax
-    NP=2      # number of steps (i.e. entities)
+    Tmax=14.0  # theta [degs] --> range: -Tmax:Tmax
+    NT=15      # number of steps (i.e. grid cells)
+    Pmax=23.0  # phi [degs] --> range: -Pmax:Pmax
+    NP=24      # number of steps (i.e. grid cells)
+    # Tmax=3.0  # theta [degs] --> range: -Tmax:Tmax
+    # NT=4      # number of steps (i.e. grid cells)
+    # Pmax=2.0  # phi [degs] --> range: -Pmax:Pmax
+    # NP=3      # number of steps (i.e. grid cells)
 
     # - hive geometry
     HiveGeo=Geometry.DefineHive_SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
-    HiveGeo.echo("hive.inp")
+    # HiveGeo.echo("hive.inp")
 
     # - gridded crystals
     #   acquire geometries
-    fileNames=[ "caloCrys.inp" ] ; geoNames=fileNames
+    fileNames=[ "caloCrys_01.inp" ] ; geoNames=fileNames
     myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames);
     cellGrid=grid.Grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
-    myProtoList=[ "caloCrys.inp" for ii in range(len(cellGrid)) ]
+    myProtoList=[ "caloCrys_01.inp" for ii in range(len(cellGrid)) ]
     GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lDebug=lDebug)
-    GridGeo.echo("grid.inp")
+    # GridGeo.echo("grid.inp")
 
     # - merge geometries
-    mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo)
+    mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,lDebug=lDebug)
+    mergedGeo.echo("merged.inp")
+    
