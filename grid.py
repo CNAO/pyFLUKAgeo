@@ -173,19 +173,19 @@ class SphericalHive(Hive):
             hRmax=Rmax-hdR/2.; hRmin=Rmin-hdR/2.
         else:
             hdR=hdR/(NR-1)
-            hRmax=Rmax+hdR; hRmin=Rmin-hdR
+            hRmax=Rmax+hdR/2.; hRmin=Rmin-hdR/2.
         hdT=(Tmax-Tmin)
         if (NT==1):
             hTmax=Tmax-hdT/2.; hTmin=Tmin-hdT/2.
         else:
             hdT=hdT/(NT-1)
-            hTmax=Tmax+hdT; hTmin=Tmin-hdT
+            hTmax=Tmax+hdT/2.; hTmin=Tmin-hdT/2.
         hdP=(Pmax-Pmin)
         if (NP==1):
             hPmax=Pmax-hdP/2.; hPmin=Pmin-hdP/2.
         else:
             hdP=hdP/(NP-1)
-            hPmax=Pmax+hdP; hPmin=Pmin-hdP
+            hPmax=Pmax+hdP/2.; hPmin=Pmin-hdP/2.
         # define unique shell values of radius and angles
         if (lDebug):
             print("* R[cm]=[%g:%g:%g];"%(hRmin,hdR,hRmax))
