@@ -419,11 +419,17 @@ class Geometry():
     def echo(self,oFileName,lSplit=False,what="all",dMode="w"):
         '''
         - what="all"/"bodies"/"regions"/"materials"
+        In case oFileName ends with ".geo", lSplit is activated,
+           overriding the user request, and bodies/regions are
+           dumped in the .geo file, whereas assignmat cards are
+           dumped in the _assignmat.inp file.
         '''
         import os
         
-        if (not oFileName.endswith(".inp")):
+        if (not oFileName.endswith(".inp") and not oFileName.endswith(".geo")):
             oFileName=oFileName+".inp"
+        if (oFileName.endswith(".geo")):
+            lSplit=True
 
         if (what.upper()=="BODIES"):
             print("saving bodies in file %s..."%(oFileName))
@@ -454,12 +460,34 @@ class Geometry():
             print("...done;")
         elif (what.upper()=="ALL"):
             if (lSplit):
-                self.echo(oFileName.replace(".inp","_bodies.inp",1),\
-                          lSplit=False,what="bodies",dMode="w")
-                self.echo(oFileName.replace(".inp","_regions.inp",1),\
-                          lSplit=False,what="regions",dMode="w")
-                self.echo(oFileName.replace(".inp","_assignmats.inp",1),\
-                          lSplit=False,what="materials",dMode="w")
+                if (oFileName.endswith(".inp")):
+                    # split geometry definition into bodies,
+                    #   regions and assignmat files, to be used with
+                    #   pure #include statements;
+                    self.echo(oFileName.replace(".inp","_bodies.inp",1),\
+                              lSplit=False,what="bodies",dMode="w")
+                    self.echo(oFileName.replace(".inp","_regions.inp",1),\
+                              lSplit=False,what="regions",dMode="w")
+                    self.echo(oFileName.replace(".inp","_assignmats.inp",1),\
+                              lSplit=False,what="materials",dMode="w")
+                else:
+                    # split geometry definition into a .geo file
+                    #   and an assignmat file; the former is encapsulated
+                    #   between GEOBEGIN and GEOEND cards, the other is
+                    #   imported via an #include statement
+                    ff=open(oFileName,"w")
+                    ff.write("% 5d% 5d%10s%s\n"%(0,0,"",self.title))
+                    ff.close()
+                    self.echo(oFileName,lSplit=False,what="bodies",dMode="a")
+                    ff=open(oFileName,"a")
+                    ff.write("%-10s\n"%("END"))
+                    ff.close()
+                    self.echo(oFileName,lSplit=False,what="regions",dMode="a")
+                    ff=open(oFileName,"a")
+                    ff.write("%-10s\n"%("END"))
+                    ff.close()
+                    self.echo(oFileName.replace(".geo","_assignmats.inp",1),\
+                              lSplit=False,what="materials",dMode="w")
             else:
                 ff=open(oFileName,"w")
                 ff.write("%-10s%60s%-10s\n"%("GEOBEGIN","","COMBNAME"))
