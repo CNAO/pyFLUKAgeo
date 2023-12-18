@@ -559,7 +559,7 @@ class Geometry():
             outReg.initCont(rCont=rCont,rCent=rCent)
 
     @staticmethod
-    def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,tmpTitle="Hive for a spherical shell",lDebug=True):
+    def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,defMat="VACUUM",tmpTitle="Hive for a spherical shell",lDebug=True):
         '''
         This method defines the hive for a grid on a spherical shell.
 
@@ -625,7 +625,7 @@ class Geometry():
         # - outside hive
         tmpReg=Region()
         tmpReg.rName="HV_OUTER"
-        tmpReg.material="VACUUM"
+        tmpReg.material=defMat
         tmpReg.definition=''' | +%-8s | -%-8s
                  | +%-8s -%-8s -%-8s
                  | +%-8s -%-8s +%-8s
@@ -645,7 +645,7 @@ class Geometry():
                 for iP in range(1,len(phis)):
                     tmpReg=Region()
                     tmpReg.rName="HVCL%04i"%(iHive)
-                    tmpReg.material="VACUUM"
+                    tmpReg.material=defMat
                     tmpReg.definition='+%-8s -%-8s +%-8s -%-8s +%-8s -%-8s'%\
                         (spheres[iR].bName,spheres[iR-1].bName,\
                          thetas [iT].bName,thetas [iT-1].bName,\
