@@ -150,7 +150,7 @@ class Region():
         # additional fields
         self.initCont()
 
-    def initCont(self,rCont=0,rCent=[0.0,0.0,0.0]):
+    def initCont(self,rCont=0,rCent=np.array([0.0,0.0,0.0])):
         self.rCont=rCont # containment indicator (1 per region):
                          # -1: region to be contained into/sized by another one
                          #  0: regular region (neither contains nor it is contained)
@@ -559,7 +559,7 @@ class Geometry():
             outReg.initCont(rCont=rCont,rCent=rCent)
 
     @staticmethod
-    def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,defMat="VACUUM",tmpTitle="Hive for a spherical shell",lDebug=True):
+    def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,defMat="VACUUM",tmpTitle="Hive for a spherical shell",lWrapBHaround=False,lDebug=True):
         '''
         This method defines the hive for a grid on a spherical shell.
 
@@ -626,19 +626,32 @@ class Geometry():
         tmpReg=Region()
         tmpReg.rName="HV_OUTER"
         tmpReg.material=defMat
-        tmpReg.definition=''' | +%-8s | -%-8s
-                 | +%-8s -%-8s -%-8s
-                 | +%-8s -%-8s +%-8s
-                 | +%-8s -%-8s +%-8s -%-8s +%-8s
-                 | +%-8s -%-8s +%-8s -%-8s -%-8s
-'''%(spheres[0].bName,spheres[-1].bName, \
+        tmpReg.definition='''-%-8s'''%(spheres[-1].bName)
+        tmpReg.comment="* region outside hive"
+        tmpReg.initCont(rCont=-1)
+        newGeom.addReg(tmpReg)
+        # - inside hive
+        tmpReg=Region()
+        tmpReg.rName="HV_INNER"
+        tmpReg.material=defMat
+        tmpReg.definition='''+%-8s'''%(spheres[0].bName)
+        tmpReg.comment="* region inside hive"
+        newGeom.addReg(tmpReg)
+        # - around hive
+        tmpReg=Region()
+        tmpReg.rName="HVAROUND"
+        tmpReg.material=defMat
+        tmpReg.definition='''| +%-8s -%-8s -%-8s
+                | +%-8s -%-8s +%-8s
+                | +%-8s -%-8s +%-8s -%-8s +%-8s
+                | +%-8s -%-8s +%-8s -%-8s -%-8s'''%( \
      spheres[-1].bName,spheres[0].bName, thetas[-1].bName, \
      spheres[-1].bName,spheres[0].bName, thetas[ 0].bName, \
      spheres[-1].bName,spheres[0].bName, thetas[-1].bName, thetas[ 0].bName, phis[ 0].bName, \
      spheres[-1].bName,spheres[0].bName, thetas[-1].bName, thetas[ 0].bName, phis[-1].bName  )
-        tmpReg.comment="* region outside hive"
+        tmpReg.comment="* region around hive"
         newGeom.addReg(tmpReg)
-        # - inside hive
+        # - actual hive
         iHive=0
         for iR in range(1,len(spheres)):
             for iT in range(1,len(thetas)):
@@ -661,6 +674,9 @@ class Geometry():
 
         newGeom.headMe(tmpTitle)
         newGeom.setTitle(tmpTitle=tmpTitle)
+
+        if (lWrapBHaround):
+            newGeom=Geometry.WrapBH_Sphere(newGeom,2*max(RRs),3*max(RRs))
         return newGeom
 
     @staticmethod
@@ -778,8 +794,53 @@ class Geometry():
             print("...cannot merge more than a region of the hive and more than a region of the grid for a single location!")
             exit(1)
         print("...done.")
+            
         return Geometry.appendGeometries([hiveGeo,gridGeo],myTitle=myTitle)
-    
+
+    @staticmethod
+    def WrapBH_Sphere(myGeo,Rmin,Rmax,defMat="VACUUM",lDebug=True):
+        '''
+        Method for wrapping a spherical layer of blackhole around a given geometry
+        '''
+        print('wrapping a spherical layer of blackhole around geometry: Rmin=%g; Rmax=%g'%(Rmin,Rmax))
+        newGeom=Geometry()
+
+        print("...bodies...")
+        bodies=[]
+        for RR,tagName in zip([Rmin,Rmax],["inner","outer"]):
+            tmpBD=Body()
+            tmpBD.bName="BLK%s"%(tagName.upper())
+            tmpBD.bType="SPH"
+            tmpBD.Rs[0]=RR
+            tmpBD.comment="* blackhole: %s radial boundary at R[cm]=%g"%(tagName,RR)
+            bodies.append(tmpBD)
+            
+        print("...regions...")
+        regions=[]
+        # - regions outside / inside layer
+        for iBod, (tagName,mySig,myPos) in enumerate(zip(["inner","outer"],["+","-"],["inside","outside"])):
+            tmpReg=Region()
+            tmpReg.rName="BLK%s"%(tagName.upper())
+            tmpReg.material=defMat
+            tmpReg.definition='''%s%-8s'''%(mySig,bodies[iBod].bName)
+            tmpReg.comment="* region %s blakchole layer"%(myPos)
+            if (iBod==0):
+                tmpReg.initCont(rCont=1)
+            regions.append(tmpReg)
+        # - actual layer
+        tmpReg=Region()
+        tmpReg.rName="BLKLAYER"
+        tmpReg.material="BLCKHOLE"
+        tmpReg.definition='''+%-8s -%-8s'''%(bodies[-1].bName,bodies[0].bName)
+        tmpReg.comment="* blackhole layer"
+        regions.append(tmpReg)
+
+        newGeom.bods=bodies
+        newGeom.regs=regions
+        
+        print('...done.')
+        return Geometry.MergeGeos(newGeom,myGeo,lDebug=lDebug,myTitle=myGeo.title)
+
 def acquireGeometries(fileNames,geoNames=None):
     '''
     A simple function to parse a series of geometry files and
