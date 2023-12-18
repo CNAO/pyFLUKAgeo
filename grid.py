@@ -106,6 +106,32 @@ class Grid:
         NR, NT, NP are number of points along grid (cell centers);
           therefore, the number of steps are NR-1, NT-1, NP-1;
         '''
+        # some checks
+        if (Rmin>Rmax):
+            Rmin, Rmax = Rmax, Rmin
+            if (lDebug):
+                print("Grid.SphericalShell(): Rmin,Rmax sorted in increasing order;")
+        if (Tmin>Tmax):
+            Tmin, Tmax = Tmax, Tmin
+            if (lDebug):
+                print("Grid.SphericalShell(): Tmin,Tmax sorted in increasing order;")
+        if (Pmin>Pmax):
+            Pmin, Pmax = Pmax, Pmin
+            if (lDebug):
+                print("Grid.SphericalShell(): Pmin,Pmax sorted in increasing order;")
+        if (Rmin<=0):
+            print("Grid.SphericalShell(): Rmin<=0!")
+            exit(1)
+        if (NR<0):
+            print("Grid.SphericalShell(): NR<0! - setting to NR=0")
+            NR=0
+        if (NT<0):
+            print("Grid.SphericalShell(): NT<0! - setting to NT=0")
+            NT=0
+        if (NP<0):
+            print("Grid.SphericalShell(): NP<0! - setting to NP=0")
+            NP=0
+            
         # define unique shell values of radius and angles
         # NB: np.linspace: num is number of points
         RRs=np.linspace(Rmin,Rmax,num=NR)
@@ -167,35 +193,65 @@ class SphericalHive(Hive):
     '''
 
     def __init__(self,Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=False):
+        # some checks
+        if (Rmin>Rmax):
+            Rmin, Rmax = Rmax, Rmin
+            if (lDebug):
+                print("Grid.SphericalShell(): Rmin,Rmax sorted in increasing order;")
+        if (Tmin>Tmax):
+            Tmin, Tmax = Tmax, Tmin
+            if (lDebug):
+                print("Grid.SphericalShell(): Tmin,Tmax sorted in increasing order;")
+        if (Pmin>Pmax):
+            Pmin, Pmax = Pmax, Pmin
+            if (lDebug):
+                print("Grid.SphericalShell(): Pmin,Pmax sorted in increasing order;")
+        if (Rmin<=0):
+            print("Grid.SphericalShell(): Rmin<=0!")
+            exit(1)
+            
+        # define mesh ranges
         Hive.__init__(self,"SPHERE")
         hdR=(Rmax-Rmin)
-        if (NR==1):
+        if (NR<=0):
+            hRmax=Rmax; hRmin=Rmin; NR=-1
+        elif (NR==1):
             hRmax=Rmax-hdR/2.; hRmin=Rmin-hdR/2.
         else:
             hdR=hdR/(NR-1)
             hRmax=Rmax+hdR/2.; hRmin=Rmin-hdR/2.
         hdT=(Tmax-Tmin)
-        if (NT==1):
+        if (NT<=0):
+            hTmax=Tmax; hTmin=Tmin; NT=-1
+        elif (NT==1):
             hTmax=Tmax-hdT/2.; hTmin=Tmin-hdT/2.
         else:
             hdT=hdT/(NT-1)
             hTmax=Tmax+hdT/2.; hTmin=Tmin-hdT/2.
         hdP=(Pmax-Pmin)
-        if (NP==1):
+        if (NP<=0):
+            hPmax=Pmax; hPmin=Pmin; NP=-1
+        elif (NP==1):
             hPmax=Pmax-hdP/2.; hPmin=Pmin-hdP/2.
         else:
             hdP=hdP/(NP-1)
             hPmax=Pmax+hdP/2.; hPmin=Pmin-hdP/2.
+            
         # define unique shell values of radius and angles
-        if (lDebug):
-            print("* R[cm]=[%g:%g:%g];"%(hRmin,hdR,hRmax))
-            print("* theta[deg]=[%g:%g:%g];"%(hTmin,hdT,hTmax))
-            print("* phi[deg]=[%g:%g:%g];"%(hPmin,hdP,hPmax))
         # NB: np.linspace: num is number of points
         self.RRs=np.linspace(hRmin,hRmax,num=NR+1)
         self.TTs=np.linspace(hTmin,hTmax,num=NT+1)
         self.PPs=np.linspace(hPmin,hPmax,num=NP+1)
 
+        if (lDebug):
+            print("SphericalHive(): R[cm]=[%g:%g:%g] - N=%d;"%(hRmin,hdR,hRmax,NR+1))
+            print("SphericalHive(): theta[deg]=[%g:%g:%g] - N=%d;"%(hTmin,hdT,hTmax,NT+1))
+            print("SphericalHive(): phi[deg]=[%g:%g:%g] - N=%d;"%(hPmin,hdP,hPmax,NP+1))
+            print("")
+            print("SphericalHive(): RRs:",self.ret("RRs"))
+            print("SphericalHive(): TTs:",self.ret("TTs"))
+            print("SphericalHive(): PPs:",self.ret("PPs"))
+            
     @staticmethod
     def SphericalHive_OneLayer(R,dR,Tmax,NT,Pmax,NP,lDebug=False):
         '''
@@ -223,11 +279,15 @@ if ( __name__ == "__main__" ):
     # perform some tests
     lDebug=True
     R=500
+    dR=50
+    NR=1
     Tmax=3    # theta [degs] --> range: -Tmax:Tmax
-    NT=2      # number of steps (i.e. entities)
+    NT=0      # number of steps (i.e. entities)
     Pmax=2    # phi [degs] --> range: -Pmax:Pmax
-    NP=2      # number of steps (i.e. entities)
-    myGrid=Grid.SphericalShell_OneLayer(R,Tmax,NT,Pmax,NP,lDebug=lDebug)
+    NP=0      # number of steps (i.e. entities)
+    myGrid=Grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
     # print(DefHiveBoundaries_SphericalShell_OneLayer(R,50,Tmax,NT,Pmax,NP))
     for loc in myGrid:
         print(loc.ret("Point"))
+    myHive=SphericalHive(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
+    
