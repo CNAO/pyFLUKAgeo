@@ -239,19 +239,75 @@ class Region(GeoObject):
         # remove any sign of merge labelling
         self.initCont()
 
-class RotDefi():
+class RotDefi(GeoObject):
     '''
+    Class handling ROT-DEFI cards.
+    Please have a look also to the Transformation class: the ROT-DEFI
+       class simply stores infos of a specific rotation/traslation;
+    - echo in FREE format uses an empty space as field separator;
+    - parsing in FREE format expects an empty space as field separator;
     '''
 
     def __init__(self):
-        self.name=""
-        self.rID=0
+        GeoObject.__init__(self) # mainly for comments, name NOT used!
         self.axis=3    # FLUKA coding: 1=x, 2=y, 3=z
-        self.theta=0.0 # FLUKA units: degrees
-        self.phi=0.0   # FLUKA units: degrees
-        self.DD=np.zeros(3)
-        self.comment=""
+        self.phi=0.0   # polar angle [degrees] (FLUKA units)
+        self.theta=0.0 # azimuth angle [degrees] (FLUKA units)
+        self.DD=np.zeros(3) # translation [cm] (x,y,z components)
 
+    def echo(self,lFree=True,myID=0,myName=""):
+        '''echo in FREE format uses an empty space as field separator'''
+        if (myID<=0):
+            print("...cannot dump a ROT-DEFI card without an index!")
+            exit(1)
+        if (len(myName)==0):
+            print("...cannot dump a ROT-DEFI card without a name!")
+            exit(1)
+        if (myID<100):
+            myIDecho=self.axis*100+myID
+        else:
+            myIDecho=self.axis+myID*1000
+        if (lFree):
+            return GeoObject.echoComm(self)+ \
+                "ROT-DEFI  %10.1f % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E %-10s"\
+                %( myIDecho, self.phi, self.theta, self.DD[0], self.DD[1], self.DD[2], myName)
+        else:
+            return GeoObject.echoComm(self)+ \
+                "ROT-DEFI  %10.1f% 10G% 10G% 10G% 10G% 10G%-10s"\
+                %( myIDecho, self.phi, self.theta, self.DD[0], self.DD[1], self.DD[2], myName)
+            
+    def fromBuf(self,myBuffer,lFree=True):
+        '''parsing in FREE format expects an empty space as field separator'''
+        for tmpLine in myBuffer.splitlines():
+            if (tmpLine.startswith("*")):
+                self.tailMe(tmpLine)
+            else:
+                # parse data
+                if (lFree):
+                    data=tmpLine.split()
+                    pID=float(data[1])
+                    phi=float(data[2])
+                    tht=float(data[3])
+                    DD=data[4:7]
+                    myName=data[7]
+                else:
+                    pID=float(tmpLine[10:20].strip())
+                    phi=float(tmpLine[20:30].strip())
+                    tht=float(tmpLine[30:40].strip())
+                    DD=[tmpLine[40:50].strip(),tmpLine[50:60].strip(),tmpLine[60:70].strip()]
+                    myName=tmpLine[70:80].strip()
+                # store data
+                if (pID>1000):
+                    myID=int(pID/1000)
+                    self.axis=pID%1000
+                else:
+                    self.axis=int(pID/100)
+                    myID=pID%100
+                self.phi=phi
+                self.theta=tht
+                self.DD=np.array(DD)
+        return myID, myName
+    
 class Geometry():
     '''
     - name-based FLUKA geometry defition;
