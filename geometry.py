@@ -260,6 +260,19 @@ class Region():
         # remove any sign of merge labelling
         self.initCont()
 
+class RotDefi():
+    '''
+    '''
+
+    def __init__(self):
+        self.rName=""
+        self.rID=0
+        self.axis=3    # FLUKA coding: 1=x, 2=y, 3=z
+        self.theta=0.0 # FLUKA units: degrees
+        self.phi=0.0   # FLUKA units: degrees
+        self.DD=np.zeros(3)
+        self.comment=""
+
 class Geometry():
     '''
     - name-based FLUKA geometry defition;
