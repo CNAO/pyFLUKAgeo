@@ -8,7 +8,47 @@ from copy import deepcopy
 import myMath
 import grid
 
-class Body:
+class GeoObject():
+    '''
+    A very basic object, implementing simply a name and a comment.
+    This object is supposed to collect all the stuff concerning
+      handling of names and modification of comments
+    '''
+
+    def __init__(self):
+        self.name=""
+        self.comment=""
+
+    def rename(self,newName,lNotify=True):
+        '''change instance name'''
+        if (lNotify):
+            self.tailMe("* NAME CHANGE: FROM %s TO %s"%(self.name,newName))
+        self.name=newName
+
+    def headMe(self,myString):
+        '''head a string to the comment'''
+        if (len(self.comment)>0):
+            self.comment=myString+"\n"+self.comment
+        else:
+            self.comment=myString
+            
+    def tailMe(self,myString):
+        '''tail a string to the comment'''
+        if (len(self.comment)>0):
+            self.comment=self.comment+"\n"+myString
+        else:
+            self.comment=myString
+                
+    def echoComm(self):
+        myBuf=""
+        if (len(self.comment)>0):
+            myBuf=self.comment+"\n"
+        return myBuf
+
+    def echoName(self):
+        return self.name
+            
+class Body(GeoObject):
     '''
     - supported bodies: all planes and spheres, nothing else for the time being;
     - body definition on ONE line only, and always starts at col 1;
@@ -21,27 +61,22 @@ class Body:
         '''
         default body is a FLUKA PLA
         '''
-        self.bName=""
+        GeoObject.__init__(self)
         self.bType="PLA"
         self.P=np.zeros(3)
         self.V=np.array([0.0,0.0,1.0])
         self.Rs=np.zeros(2)
-        self.comment=""
 
     def echo(self):
-        # take into account comment lines
-        myBuf=""
-        if (len(self.comment)>0):
-            myBuf=self.comment+"\n"
-        # actual body definition
+        '''take into account comment'''
         if (self.bType=="PLA"):
-            return myBuf+ \
+            return GeoObject.echoComm(self)+ \
                 "PLA %8s % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E" % \
-                ( self.bName, self.V[0], self.V[1], self.V[2], \
-                              self.P[0], self.P[1], self.P[2] )
+                ( self.echoName(), self.V[0], self.V[1], self.V[2], \
+                             self.P[0], self.P[1], self.P[2] )
         elif (self.bType=="SPH"):
-            return myBuf+"SPH %8s % 15.8E % 15.8E % 15.8E % 15.8E" \
-             % ( self.bName, self.P[0], self.P[1], self.P[2], self.Rs[0] )
+            return GeoObject.echoComm(self)+"SPH %8s % 15.8E % 15.8E % 15.8E % 15.8E" \
+             % ( self.echoName(), self.P[0], self.P[1], self.P[2], self.Rs[0] )
         else:
             print("body %s NOT supported yet!"%(self.bType))
             exit(1)
@@ -53,34 +88,31 @@ class Body:
             data=tmpLine.split()
             if (data[0]=="PLA"):
                 newBody.bType="PLA"
-                newBody.bName=data[1]
+                newBody.rename(data[1],lNotify=False)
                 newBody.V=np.array(data[2:5]).astype(float)
                 newBody.P=np.array(data[5:8]).astype(float)
             elif (data[0]=="YZP"):
                 newBody.bType="PLA"
-                newBody.bName=data[1]
+                newBody.rename(data[1],lNotify=False)
                 newBody.V=np.array([1.0,0.0,0.0])
                 newBody.P[0]=data[2].astype(float)
             elif (data[0]=="XZP"):
                 newBody.bType="PLA"
-                newBody.bName=data[1]
+                newBody.rename(data[1],lNotify=False)
                 newBody.V=np.array([0.0,1.0,0.0])
                 newBody.P[1]=data[2].astype(float)
             elif (data[0]=="XYP"):
                 newBody.bType="PLA"
-                newBody.bName=data[1]
+                newBody.rename(data[1],lNotify=False)
                 newBody.V=np.array([0.0,0.0,1.0])
                 newBody.P[2]=data[2].astype(float)
             elif (data[0]=="SPH"):
                 newBody.bType="SPH"
-                newBody.bName=data[1]
+                newBody.rename(data[1],lNotify=False)
                 newBody.P=np.array(data[2:5]).astype(float)
                 newBody.Rs[0]=data[5].astype(float)
             elif (tmpLine.startswith("*")):
-                if (len(newBody.comment)==0):
-                    newBody.comment=tmpLine
-                else:
-                    newBody.comment=newBody.comment+"\n"+tmpLine
+                newBody.tailMe(tmpLine)
             else:
                 print("body %s NOT supported yet!"%(data[0]))
                 exit(1)
@@ -106,30 +138,7 @@ class Body:
                 myMat=myMath.RotMat(myAng=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                 self.rotate(myMat=myMat,myTheta=None,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                 
-    def rename(self,newName,lNotify=True):
-        if (lNotify):
-            self.tailMe("* NAME CHANGE: FROM %s TO %s"%(self.bName,newName))
-        self.bName=newName
-
-    def headMe(self,myString):
-        '''
-        simple method to head a string to the comment of the body declaration
-        '''
-        if (len(self.comment)>0):
-            self.comment=myString+"\n"+self.comment
-        else:
-            self.comment=myString
-            
-    def tailMe(self,myString):
-        '''
-        simple method to tail a string to the comment of the body declaration
-        '''
-        if (len(self.comment)>0):
-            self.comment=self.comment+"\n"+myString
-        else:
-            self.comment=myString
-                
-class Region():
+class Region(GeoObject):
     '''
     - no parsing/splitting of zones;
     - support only for preceding comments or commented lines between region
@@ -142,11 +151,10 @@ class Region():
     '''
 
     def __init__(self):
-        self.rName=""
+        GeoObject.__init__(self)
         self.neigh=5
         self.definition=""
         self.material="BLACKHOLE"
-        self.comment=""
         # additional fields
         self.initCont()
 
@@ -164,13 +172,10 @@ class Region():
         for tmpLine in myBuffer.splitlines():
             if (not lHeadParsed):
                 if (tmpLine.startswith("*")):
-                    if (len(newReg.comment)==0):
-                        newReg.comment=tmpLine
-                    else:
-                        newReg.comment=newReg.comment+"\n"+tmpLine
+                    newReg.tailMe(tmpLine)
                 else:
                     data=tmpLine.split()
-                    newReg.rName=data[0]
+                    newReg.rename(data[0],lNotify=False)
                     newReg.neigh=float(data[1])
                     newReg.definition=tmpLine
                     # remove region name and number of neighbour regions from
@@ -184,29 +189,6 @@ class Region():
                 newReg.definition=newReg.definition+"\n"+tmpLine
         return newReg
         
-    def rename(self,newName,lNotify=True):
-        if (lNotify):
-            self.tailMe("* NAME CHANGE: FROM %s TO %s"%(self.rName,newName))
-        self.rName=newName
-
-    def headMe(self,myString):
-        '''
-        simple method to head a string to the comment of the region declaration
-        '''
-        if (len(self.comment)>0):
-            self.comment=myString+"\n"+self.comment
-        else:
-            self.comment=myString
-            
-    def tailMe(self,myString):
-        '''
-        simple method to tail a string to the comment of the region declaration
-        '''
-        if (len(self.comment)>0):
-            self.comment=self.comment+"\n"+myString
-        else:
-            self.comment=myString
-                
     def BodyNameReplaceInDef(self,oldNames,newNames):
         '''
         simple method to query-replace body names in region definition
@@ -218,20 +200,17 @@ class Region():
         self.material=myMaterial
         
     def echo(self,lMat=False):
-        # take into account comment lines
-        myBuf=""
-        if (len(self.comment)>0):
-            myBuf=self.comment+"\n"
+        '''take into account comment'''
         if (lMat):
             # echo ASSIGNMA card
-            return myBuf+"ASSIGNMA  %10s%10s" % ( self.material, self.rName )
+            return GeoObject.echoComm(self)+"ASSIGNMA  %10s%10s" % ( self.material, self.echoName() )
         else:
-            return myBuf+"%-8s   %4d %s" % \
-                ( self.rName, self.neigh, self.definition )
+            return GeoObject.echoComm(self)+"%-8s   %4d %s" % \
+                ( self.echoName(), self.neigh, self.definition )
 
     def merge(self,newReg,spacing=" "*16):
         # warn user in comment
-        self.tailMe("* --> merged with region %s <--"%(newReg.rName))
+        self.tailMe("* --> merged with region %s <--"%(newReg.echoName()))
         # merge comments
         if (len(newReg.comment)>0):
             self.tailMe(newReg.comment)
@@ -247,7 +226,7 @@ class Region():
                     sNewRegZone=newRegZone.strip()
                     if (len(sNewRegZone)>0):
                         tmpComment="* merging zone %s:%d into %s:%d"%(\
-                                newReg.rName,jj,self.rName,ii)
+                                newReg.echoName(),jj,self.echoName(),ii)
                         if (lFirst):
                             self.tailMe(tmpComment)
                             mergedDef="| %s %s"%(sMyRegZone,sNewRegZone)
@@ -265,7 +244,7 @@ class RotDefi():
     '''
 
     def __init__(self):
-        self.rName=""
+        self.name=""
         self.rID=0
         self.axis=3    # FLUKA coding: 1=x, 2=y, 3=z
         self.theta=0.0 # FLUKA units: degrees
@@ -309,7 +288,7 @@ class Geometry():
         print("...assigning material %s to region %s..."%(myMat,myReg))
         lFound=False
         for ii in range(len(self.regs)):
-            if (self.regs[ii].rName==myReg):
+            if (self.regs[ii].echoName()==myReg):
                 lFound=True
                 self.regs[ii].assignMat(myMat)
         if (not lFound):
@@ -329,20 +308,20 @@ class Geometry():
         lFound=False
         if (myWhat.upper()=="BODY"):
             if (myName.upper()=="ALL"):
-                myEntry=[ body.bName for body in self.bos ]
+                myEntry=[ body.echoName() for body in self.bos ]
                 iEntry=[ ii for ii in range(len(self.bods)) ]
             else:
                 for iEntry,myEntry in enumerate(self.bods):
-                    if (myEntry.bName==myName):
+                    if (myEntry.echoName()==myName):
                         lFound=True
                         break
         elif (myWhat.upper()=="REGION"):
             if (myName.upper()=="ALL"):
-                myEntry=[ reg.rName for reg in self.regs ]
+                myEntry=[ reg.echoName() for reg in self.regs ]
                 iEntry=[ ii for ii in range(len(self.regs)) ]
             else:
                 for iEntry,myEntry in enumerate(self.regs):
-                    if (myEntry.rName==myName):
+                    if (myEntry.echoName()==myName):
                         lFound=True
                         break
         else:
@@ -549,7 +528,7 @@ class Geometry():
         newNameFmt=newName+"%0"+"%d"%(maxLenName-len(newName))+"d"
         oldBodyNames=[]; newBodyNames=[]
         for iBody in range(len(self.bods)):
-            oldBodyNames.append(self.bods[iBody].bName)
+            oldBodyNames.append(self.bods[iBody].echoName())
             newBodyNames.append(newNameFmt%(iBody+1))
             self.bods[iBody].rename(newBodyNames[-1],lNotify=lNotify)
         for iReg in range(len(self.regs)):
@@ -608,7 +587,7 @@ class Geometry():
         spheres=[]
         for ii,RR in enumerate(RRs,1):
             tmpBD=Body()
-            tmpBD.bName="HVRAD%03i"%(ii)
+            tmpBD.rename("HVRAD%03i"%(ii),lNotify=False)
             tmpBD.bType="SPH"
             tmpBD.Rs[0]=RR
             tmpBD.comment="* Hive radial boundary at R[cm]=%g"%(RR)
@@ -617,7 +596,7 @@ class Geometry():
         thetas=[]
         for ii,TT in enumerate(TTs,1):
             tmpBD=Body()
-            tmpBD.bName="HVTHT%03i"%(ii)
+            tmpBD.rename("HVTHT%03i"%(ii),lNotify=False)
             tmpBD.V=np.array([0.0,1.0,0.0])
             tmpBD.rotate(myMat=None,myTheta=-TT,myAxis=1,lDegs=True,lDebug=lDebug)
             tmpBD.comment="* Hive theta boundary at theta[deg]=%g"%(TT)
@@ -626,7 +605,7 @@ class Geometry():
         phis=[]
         for ii,PP in enumerate(PPs,1):
             tmpBD=Body()
-            tmpBD.bName="HVPHI%03i"%(ii)
+            tmpBD.rename("HVPHI%03i"%(ii),lNotify=False)
             tmpBD.V=np.array([1.0,0.0,0.0])
             tmpBD.rotate(myMat=None,myTheta=PP,myAxis=2,lDegs=True,lDebug=lDebug)
             tmpBD.comment="* Hive phi boundary at phi[deg]=%g"%(PP)
@@ -637,31 +616,31 @@ class Geometry():
         print("   ...regions...")
         # - outside hive
         tmpReg=Region()
-        tmpReg.rName="HV_OUTER"
+        tmpReg.rename("HV_OUTER",lNotify=False)
         tmpReg.material=defMat
-        tmpReg.definition='''-%-8s'''%(spheres[-1].bName)
+        tmpReg.definition='''-%-8s'''%(spheres[-1].name)
         tmpReg.comment="* region outside hive"
         tmpReg.initCont(rCont=-1)
         newGeom.addReg(tmpReg)
         # - inside hive
         tmpReg=Region()
-        tmpReg.rName="HV_INNER"
+        tmpReg.rename("HV_INNER",lNotify=False)
         tmpReg.material=defMat
-        tmpReg.definition='''+%-8s'''%(spheres[0].bName)
+        tmpReg.definition='''+%-8s'''%(spheres[0].name)
         tmpReg.comment="* region inside hive"
         newGeom.addReg(tmpReg)
         # - around hive
         tmpReg=Region()
-        tmpReg.rName="HVAROUND"
+        tmpReg.rename("HVAROUND",lNotify=False)
         tmpReg.material=defMat
         tmpReg.definition='''| +%-8s -%-8s -%-8s
                 | +%-8s -%-8s +%-8s
                 | +%-8s -%-8s +%-8s -%-8s +%-8s
                 | +%-8s -%-8s +%-8s -%-8s -%-8s'''%( \
-     spheres[-1].bName,spheres[0].bName, thetas[-1].bName, \
-     spheres[-1].bName,spheres[0].bName, thetas[ 0].bName, \
-     spheres[-1].bName,spheres[0].bName, thetas[-1].bName, thetas[ 0].bName, phis[ 0].bName, \
-     spheres[-1].bName,spheres[0].bName, thetas[-1].bName, thetas[ 0].bName, phis[-1].bName  )
+     spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), \
+     spheres[-1].echoName(),spheres[0].echoName(), thetas[ 0].echoName(), \
+     spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[ 0].echoName(), \
+     spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName()  )
         tmpReg.comment="* region around hive"
         newGeom.addReg(tmpReg)
         # - actual hive
@@ -670,12 +649,12 @@ class Geometry():
             for iT in range(1,len(thetas)):
                 for iP in range(1,len(phis)):
                     tmpReg=Region()
-                    tmpReg.rName="HVCL%04i"%(iHive)
+                    tmpReg.rename("HVCL%04i"%(iHive),lNotify=False)
                     tmpReg.material=defMat
                     tmpReg.definition='+%-8s -%-8s +%-8s -%-8s +%-8s -%-8s'%\
-                        (spheres[iR].bName,spheres[iR-1].bName,\
-                         thetas [iT].bName,thetas [iT-1].bName,\
-                         phis   [iP].bName,phis   [iP-1].bName)
+                        (spheres[iR].echoName(),spheres[iR-1].echoName(),\
+                         thetas [iT].echoName(),thetas [iT-1].echoName(),\
+                         phis   [iP].echoName(),phis   [iP-1].echoName())
                     tmpComment=             "* - hive region %4d: R[cm]=[%g:%g], theta[deg]=[%g:%g], phi[deg]=[%g:%g]"%(
                         iHive,RRs[iR-1],RRs[iR],TTs[iT-1],TTs[iT],PPs[iP-1],PPs[iP])
                     myCenter=cellGrid.ret(myWhat="POINT",iEl=iHive)
@@ -781,8 +760,8 @@ class Geometry():
                 for jRgg in iRgg:
                     if (np.linalg.norm(gridGeo.regs[jRgg].rCent-hiveGeo.regs[jRhg].rCent)<prec):
                         gridGeo.regs[jRgg].merge(hiveGeo.regs[jRhg])
-                        if (hiveGeo.regs[jRhg].rName not in removeRegs):
-                            removeRegs.append(hiveGeo.regs[jRhg].rName)
+                        if (hiveGeo.regs[jRhg].echoName() not in removeRegs):
+                            removeRegs.append(hiveGeo.regs[jRhg].echoName())
             # - remove merged regs
             for removeReg in removeRegs:
                 myReg,iReg=hiveGeo.ret("REGION",removeReg)
@@ -797,8 +776,8 @@ class Geometry():
                 for jRhg in iRhg:
                     if (np.linalg.norm(hiveGeo.regs[jRhg].rCent-gridGeo.regs[jRgg].rCent)<prec):
                         hiveGeo.regs[jRhg].merge(gridGeo.regs[jRgg])
-                        if (gridGeo.regs[jRgg].rName not in removeRegs):
-                            removeRegs.append(gridGeo.regs[jRgg].rName)
+                        if (gridGeo.regs[jRgg].echoName() not in removeRegs):
+                            removeRegs.append(gridGeo.regs[jRgg].echoName())
             # - remove merged regs
             for removeReg in removeRegs:
                 myReg,iReg=gridGeo.ret("REGION",removeReg)
@@ -822,7 +801,7 @@ class Geometry():
         bodies=[]
         for RR,tagName in zip([Rmin,Rmax],["inner","outer"]):
             tmpBD=Body()
-            tmpBD.bName="BLK%s"%(tagName.upper())
+            tmpBD.rename("BLK%s"%(tagName.upper()),lNotify=False)
             tmpBD.bType="SPH"
             tmpBD.Rs[0]=RR
             tmpBD.comment="* blackhole: %s radial boundary at R[cm]=%g"%(tagName,RR)
@@ -833,18 +812,18 @@ class Geometry():
         # - regions outside / inside layer
         for iBod, (tagName,mySig,myPos) in enumerate(zip(["inner","outer"],["+","-"],["inside","outside"])):
             tmpReg=Region()
-            tmpReg.rName="BLK%s"%(tagName.upper())
+            tmpReg.rename("BLK%s"%(tagName.upper()),lNotify=False)
             tmpReg.material=defMat
-            tmpReg.definition='''%s%-8s'''%(mySig,bodies[iBod].bName)
+            tmpReg.definition='''%s%-8s'''%(mySig,bodies[iBod].name)
             tmpReg.comment="* region %s blakchole layer"%(myPos)
             if (iBod==0):
                 tmpReg.initCont(rCont=1)
             regions.append(tmpReg)
         # - actual layer
         tmpReg=Region()
-        tmpReg.rName="BLKLAYER"
+        tmpReg.rename("BLKLAYER",lNotify=False)
         tmpReg.material="BLCKHOLE"
-        tmpReg.definition='''+%-8s -%-8s'''%(bodies[-1].bName,bodies[0].bName)
+        tmpReg.definition='''+%-8s -%-8s'''%(bodies[-1].echoName(),bodies[0].echoName())
         tmpReg.comment="* blackhole layer"
         regions.append(tmpReg)
 
