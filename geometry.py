@@ -307,14 +307,88 @@ class RotDefi(GeoObject):
                 self.theta=tht
                 self.DD=np.array(DD)
         return myID, myName
+
+class Transformation(GeoObject):
+    '''
+    This is the actual class to be used when dealing with ROT-DEFI cards.
+    The class implements an array of ROT-DEFI cards - hence, at least one card.
+    '''
+
+    def __init__(self):
+        GeoObject.__init__(self) # mainly for names, comments NOT used!
+        self.RotDefis=[] # list of ROT-DEFI cards
+        self.ID=0
+        
+    def __len__(self):
+        return len(self.RotDefis)
+
+    def __iter__(self):
+        self.current_index=0
+        return self
     
+    def __next__(self):
+        '''
+        from https://blog.finxter.com/python-__iter__-magic-method/
+        '''
+        if self.current_index < len(self):
+            x = self.RotDefis[self.current_index]
+            self.current_index += 1
+            return x
+        raise StopIteration
+
+    # override methods of GeoObject, since comments are of the single
+    #   ROT-DEFI cards
+    def headMe(self,myString):
+        self.RotDefis[0].headMe(myString)
+    def tailMe(self,myString):
+        self.RotDefis[0].tailMe(myString)
+    def echoComm(self):
+        self.RotDefis[0].echoComm()
+
+    def AddRotDefi(self,newRotDefi):
+        self.RotDefis.append(newRotDefi)
+
+    @staticmethod
+    def fromBuf(self,myBuffer,lFree=True):
+        newTransf=Transformation()
+        myBuf=""
+        for tmpLine in myBuffer.splitlines():
+            if (tmpLine.startswith("*")):
+                if (len(myBuf)==0):
+                    myBuf=tmpLine
+                else:
+                    myBuf=myBuf+"\n"+tmpLine
+            else:
+                tmpRotDefi=RotDefi()
+                myID,myName=tmpRotDefi.fromBuf(myBuf)
+                if (myID!=0):
+                    if (newTransf.ID==0):
+                        newTransf.ID=myID
+                    elif(newTransf.ID!=myID):
+                        print("...cannot add ROT-DEFI with ID=%d to tranformation ID=%d!"%(myID,newTransf.ID))
+                        exit(1)
+                if (len(myName)>0):
+                    if (len(newTransf.echoName())==0):
+                        newTransf.rename(myName,lNotify=False)
+                    elif (newTransf.echoName()!=myName):
+                        print("...cannot add ROT-DEFI named %s to tranformation named %s !"%(myName,newTransf.echoName()))
+                        exit(1)
+                newTransf.AddRotDefi(tmpRotDefi)
+                myBuf=""
+        return newTransf
+
+    def echo(self,lFree=True):
+        buf=""
+        for myRotDefi in self.RotDefis:
+            buf=buf+myRotDefi.echo(myID=self.ID,myName=self.name)+"\n"
+        return buf
+                        
 class Geometry():
     '''
     - name-based FLUKA geometry defition;
     - NO support of LATTICE cards;
-    - NO support for #input cards or geo defitions in files other than that
+    - NO support for #include cards or geo defitions in files other than that
        being parsed;
-    - NO support for ROT-DEFI cards;
     - comments:
       . body: commented lines are considered always before the comment, and only
               commented lines before the body will be retained;
@@ -326,13 +400,22 @@ class Geometry():
     def __init__(self):
         self.bods=[]
         self.regs=[]
+        self.tras=[]
         self.title=""
 
-    def addBod(self,tmpBod):
-        self.bods.append(tmpBod)
- 
-    def addReg(self,tmpReg):
-        self.regs.append(tmpReg)
+    def add(self,tmpEl,what="body"):
+        '''
+        tmpEl is already the instance to be added, NOT the string buffer to be parsed
+        '''
+        if (what.upper().startswith("BOD")):
+            self.bods.append(tmpEl)
+        elif (what.upper().startswith("REG")):
+            self.regs.append(tmpEl)
+        elif (what.upper().startswith("TRANSF")):
+            self.tras.append(tmpEl)
+        else:
+            print("...what do you want to add to geometry? %s NOT recognised!"%(what))
+            exit(1)
 
     def setTitle(self,tmpTitle="My Geometry"):
         self.title=tmpTitle
@@ -342,14 +425,8 @@ class Geometry():
         myMat=data[1]
         myReg=data[2]
         print("...assigning material %s to region %s..."%(myMat,myReg))
-        lFound=False
-        for ii in range(len(self.regs)):
-            if (self.regs[ii].echoName()==myReg):
-                lFound=True
-                self.regs[ii].assignMat(myMat)
-        if (not lFound):
-            print("...region %s NOT found in geometry!"%(myReg))
-            exit(1)
+        myEntry,iEntry=self.ret(myReg,what="REG")
+        self.regs[iEntry].assignMat(myMat)
 
     def headMe(self,myString,begLine="* \n"+"* "+"="*108,endLine="* "+"-"*108+"\n* "):
         '''
@@ -357,26 +434,39 @@ class Geometry():
            regions, assignma cards)
         '''
         actualString=begLine+"\n* "+myString+" \n"+endLine
-        self.bods[0].headMe(actualString)
-        self.regs[0].headMe(actualString)
+        if (len(self.bods)>0):
+            self.bods[0].headMe(actualString)
+        if (len(self.regs)>0):
+            self.regs[0].headMe(actualString)
+        if (len(self.tras)>0):
+            self.tras[0].headMe(actualString)
             
     def ret(self,myWhat,myName):
         lFound=False
-        if (myWhat.upper()=="BODY"):
+        if (myWhat.upper().startswith("BOD")):
             if (myName.upper()=="ALL"):
-                myEntry=[ body.echoName() for body in self.bos ]
+                myEntry=[ body.echoName() for body in self.bods ]
                 iEntry=[ ii for ii in range(len(self.bods)) ]
             else:
                 for iEntry,myEntry in enumerate(self.bods):
                     if (myEntry.echoName()==myName):
                         lFound=True
                         break
-        elif (myWhat.upper()=="REGION"):
+        elif (myWhat.upper().startswith("REG")):
             if (myName.upper()=="ALL"):
                 myEntry=[ reg.echoName() for reg in self.regs ]
                 iEntry=[ ii for ii in range(len(self.regs)) ]
             else:
                 for iEntry,myEntry in enumerate(self.regs):
+                    if (myEntry.echoName()==myName):
+                        lFound=True
+                        break
+        elif (what.upper().startswith("TRANSF")):
+            if (myName.upper()=="ALL"):
+                myEntry=[ tras.echoName() for tras in self.tras ]
+                iEntry=[ ii for ii in range(len(self.tras)) ]
+            else:
+                for iEntry,myEntry in enumerate(self.tras):
                     if (myEntry.echoName()==myName):
                         lFound=True
                         break
@@ -394,39 +484,71 @@ class Geometry():
         print("parsing file %s..."%(myInpName))
         ff=open(myInpName,'r')
         lRead=0
+        lFree=False
         tmpBuf=""
         regBuf=""
         for tmpLine in ff.readlines():
+            
+            # OUTSIDE GEOBEGIN-GEOEND
             if (lRead==0):
-                # non-geometry input
                 if (tmpLine.startswith("GEOBEGIN")):
                     lRead=1
                 elif (tmpLine.startswith("ASSIGNMA")):
                     newGeom.assignma(tmpLine)
+                elif (tmpLine.startswith("ROT-DEFI")):
+                    # acquire ROT-DEFI card
+                    tmpRotDefi=RotDefi()
+                    myID,myName=tmpRotDefi.fromBuf(tmpBuf,lFree=lFree)
+                    myEntry,iEntry=self.ret("TRANSF",myName)
+                    if (iEntry==-1):
+                        # brand new transformation
+                        self.add(tmpRotDefi,"TRANSF")
+                    else:
+                        self.tras[iEntry].AddRotDefi(tmpRotDefi)
+                    tmpBuf="" # flush buffer
+                elif (tmpLine.startswith("*")):
+                    if (len(tmpBuf)>0):
+                        tmpBuf=tmpBuf+"\n"+tmpLine
+                    else:
+                        tmpBuf=tmpLine
+                elif (tmpLine.startswith("FREE")):
+                    lFree=True
+                elif (tmpLine.startswith("FIXED")):
+                    lFree=False
+                else:
+                    # another card, to be skipped
+                    tmpBuf="" # flush buffer
+                    
+            # INSIDE GEOBEGIN-GEOEND
             elif (lRead==1):
                 # title after GEOBEGIN
                 newGeom.title=tmpLine[20:].strip()
                 lRead=2
+                tmpBuf="" # flush buffer
             elif (lRead==2):
                 # definition of FLUKA bodies
                 if (tmpLine.startswith("END")):
                     print("...acquired %d bodies;"%(len(newGeom.bods)))
                     lRead=3
                     tmpBuf="" # flush buffer
+                elif (tmpLine.startswith("$start")):
+                    print("$start* cards NOT supported!")
+                    exit(1)
                 else:
                     tmpBuf=tmpBuf+tmpLine
                     if (not tmpLine.startswith("*")):
                         # acquire body
-                        newGeom.addBod(Body.fromBuf(tmpBuf.strip()))
+                        newGeom.add(Body.fromBuf(tmpBuf.strip()))
                         tmpBuf="" # flush buffer
             elif (lRead==3):
                 # definition of FLUKA regions
                 if (tmpLine.startswith("END")):
                     if (len(regBuf)>0):
                         # acquire region
-                        newGeom.addReg(Region.fromBuf(regBuf))
+                        newGeom.add(Region.fromBuf(regBuf),what="reg")
                         regBuf="" # flush region def buffer
                     print("...acquired %d regions;"%(len(newGeom.regs)))
+                    tmpBuf="" # flush buffer
                     lRead=0 # ignore LATTICE cards
                 else:
                     if (tmpLine.startswith("*")):
@@ -441,10 +563,10 @@ class Geometry():
                         # a new region
                         if (len(regBuf)>0):
                             # acquire region previously read (if any)
-                            newGeom.addReg(Region.fromBuf(regBuf))
+                            newGeom.add(Region.fromBuf(regBuf),what="reg"))
                             regBuf="" # flush region def buffer
                         regBuf=tmpBuf+tmpLine
-                        tmpBuf=""
+                        tmpBuf="" # flush buffer
                     
         ff.close()
         print("...done;")
@@ -459,6 +581,7 @@ class Geometry():
         for myGeo in myGeos:
             new.bods=new.bods+myGeo.bods
             new.regs=new.regs+myGeo.regs
+            new.tras=new.regs+myGeo.tras
         if (myTitle is None):
             myTitle="appended geometries"
         new.title=myTitle
@@ -479,7 +602,7 @@ class Geometry():
         if (oFileName.endswith(".geo")):
             lSplit=True
 
-        if (what.upper()=="BODIES"):
+        if (what.upper().startswith("BOD")):
             print("saving bodies in file %s..."%(oFileName))
             ff=open(oFileName,dMode)
             ff.write("* \n")
@@ -488,7 +611,7 @@ class Geometry():
             ff.write("* \n")
             ff.close()
             print("...done;")
-        elif (what.upper()=="REGIONS"):
+        elif (what.upper().startswith("REG")):
             print("saving regions in file %s..."%(oFileName))
             ff=open(oFileName,dMode)
             ff.write("* \n")
@@ -497,7 +620,18 @@ class Geometry():
             ff.write("* \n")
             ff.close()
             print("...done;")
-        elif (what.upper()=="MATERIALS"):
+        elif (what.upper().startswith("TRANSF")):
+            print("saving ROT-DEFI cards in file %s..."%(oFileName))
+            ff=open(oFileName,dMode)
+            ff.write("* \n")
+            ff.write("FREE \n")
+            for tmpTrasf in self.tras:
+                ff.write("%s\n"%(tmpTrasf.echo())) # FREE format by default
+            ff.write("FIXED \n")
+            ff.write("* \n")
+            ff.close()
+            print("...done;")
+        elif (what.upper().startswith("MAT")):
             print("saving ASSIGNMA cards in file %s..."%(oFileName))
             ff=open(oFileName,dMode)
             ff.write("* \n")
@@ -518,6 +652,9 @@ class Geometry():
                               lSplit=False,what="regions",dMode="w")
                     self.echo(oFileName.replace(".inp","_assignmats.inp",1),\
                               lSplit=False,what="materials",dMode="w")
+                    if (len(self.tras)>0):
+                        self.echo(oFileName.replace(".inp","_rotdefis.inp",1),\
+                              lSplit=False,what="transf",dMode="w")
                 else:
                     # split geometry definition into a .geo file
                     #   and an assignmat file; the former is encapsulated
@@ -536,6 +673,9 @@ class Geometry():
                     ff.close()
                     self.echo(oFileName.replace(".geo","_assignmats.inp",1),\
                               lSplit=False,what="materials",dMode="w")
+                    if (len(self.tras)>0):
+                        self.echo(oFileName.replace(".geo","_rotdefis.inp",1),\
+                              lSplit=False,what="transf",dMode="w")
             else:
                 ff=open(oFileName,"w")
                 ff.write("%-10s%60s%-10s\n"%("GEOBEGIN","","COMBNAME"))
@@ -550,6 +690,8 @@ class Geometry():
                 ff.write("%-10s\n"%("END"))
                 ff.write("%-10s\n"%("GEOEND"))
                 ff.close()
+                if (len(self.tras)>0):
+                    self.echo(oFileName,lSplit=False,what="transf",dMode="a")
                 self.echo(oFileName,lSplit=False,what="materials",dMode="a")
         else:
             print("...what should I echo? %s NOT reconised!"%(what))
@@ -590,20 +732,22 @@ class Geometry():
         for iReg in range(len(self.regs)):
             self.regs[iReg].rename(newNameFmt%(iReg+1),lNotify=lNotify)
             self.regs[iReg].BodyNameReplaceInDef(oldBodyNames,newBodyNames)
+        for iTras in range(len(self.tras)):
+            self.tras[iTras].rename(newNameFmt%(iTras+1),lNotify=lNotify)
 
     def flagRegs(self,whichRegs,rCont,rCent):
         if (whichRegs is str):
             if (whichRegs.upper()=="ALL"):
-                regs2mod,iRegs2mod=myGeo.ret("region","ALL")
+                regs2mod,iRegs2mod=myGeo.ret("reg","ALL")
             else:
                 regs2mod=[whichRegs]
         else:
             if ( "ALL" in [tmpStr.upper() for tmpStr in whichRegs] ):
-                regs2mod,iRegs2mod=myGeo.ret("region","ALL")
+                regs2mod,iRegs2mod=myGeo.ret("reg","ALL")
             else:
                 regs2mod=whichRegs
         for whichReg in whichRegs:
-            outReg,iReg=self.ret("region",whichReg)
+            outReg,iReg=self.ret("reg",whichReg)
             outReg.initCont(rCont=rCont,rCent=rCent)
 
     @staticmethod
@@ -677,14 +821,14 @@ class Geometry():
         tmpReg.definition='''-%-8s'''%(spheres[-1].name)
         tmpReg.comment="* region outside hive"
         tmpReg.initCont(rCont=-1)
-        newGeom.addReg(tmpReg)
+        newGeom.add(tmpReg,what="reg"))
         # - inside hive
         tmpReg=Region()
         tmpReg.rename("HV_INNER",lNotify=False)
         tmpReg.material=defMat
         tmpReg.definition='''+%-8s'''%(spheres[0].name)
         tmpReg.comment="* region inside hive"
-        newGeom.addReg(tmpReg)
+        newGeom.add(tmpReg,what="reg"))
         # - around hive
         tmpReg=Region()
         tmpReg.rename("HVAROUND",lNotify=False)
@@ -698,7 +842,7 @@ class Geometry():
      spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[ 0].echoName(), \
      spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName()  )
         tmpReg.comment="* region around hive"
-        newGeom.addReg(tmpReg)
+        newGeom.add(tmpReg,what="reg"))
         # - actual hive
         iHive=0
         for iR in range(1,len(spheres)):
@@ -717,7 +861,7 @@ class Geometry():
                     tmpComment=tmpComment+"\n*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2])
                     tmpReg.comment=tmpComment
                     tmpReg.initCont(rCont=1,rCent=myCenter)
-                    newGeom.addReg(tmpReg)
+                    newGeom.add(tmpReg,what="reg"))
                     iHive=iHive+1
 
         newGeom.headMe(tmpTitle)
@@ -820,7 +964,7 @@ class Geometry():
                             removeRegs.append(hiveGeo.regs[jRhg].echoName())
             # - remove merged regs
             for removeReg in removeRegs:
-                myReg,iReg=hiveGeo.ret("REGION",removeReg)
+                myReg,iReg=hiveGeo.ret("REG",removeReg)
                 hiveGeo.regs.pop(iReg)
         elif(len(iRgg)==len(ucRgg)):
             # for each location, only one grid region is concerned:
@@ -836,7 +980,7 @@ class Geometry():
                             removeRegs.append(gridGeo.regs[jRgg].echoName())
             # - remove merged regs
             for removeReg in removeRegs:
-                myReg,iReg=gridGeo.ret("REGION",removeReg)
+                myReg,iReg=gridGeo.ret("REG",removeReg)
                 gridGeo.regs.pop(iReg)
         else:
             print("...cannot merge more than a region of the hive and more than a region of the grid for a single location!")
