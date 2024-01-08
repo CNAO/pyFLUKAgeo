@@ -275,12 +275,14 @@ class RotDefi(GeoObject):
             return GeoObject.echoComm(self)+ \
                 "ROT-DEFI  %10.1f% 10G% 10G% 10G% 10G% 10G%-10s"\
                 %( myIDecho, self.phi, self.theta, self.DD[0], self.DD[1], self.DD[2], myName)
-            
-    def fromBuf(self,myBuffer,lFree=True):
+
+    @staticmethod
+    def fromBuf(myBuffer,lFree=True):
         '''parsing in FREE format expects an empty space as field separator'''
+        newRotDefi=RotDefi()
         for tmpLine in myBuffer.splitlines():
             if (tmpLine.startswith("*")):
-                self.tailMe(tmpLine)
+                newRotDefi.tailMe(tmpLine)
             else:
                 # parse data
                 if (lFree):
@@ -299,14 +301,14 @@ class RotDefi(GeoObject):
                 # store data
                 if (pID>1000):
                     myID=int(pID/1000)
-                    self.axis=pID%1000
+                    newRotDefi.axis=pID%1000
                 else:
-                    self.axis=int(pID/100)
+                    newRotDefi.axis=int(pID/100)
                     myID=pID%100
-                self.phi=phi
-                self.theta=tht
-                self.DD=np.array(DD)
-        return myID, myName
+                newRotDefi.phi=phi
+                newRotDefi.theta=tht
+                newRotDefi.DD=np.array(DD)
+        return newRotDefi, myID, myName
 
 class Transformation(GeoObject):
     '''
@@ -382,7 +384,71 @@ class Transformation(GeoObject):
         for myRotDefi in self.RotDefis:
             buf=buf+myRotDefi.echo(myID=self.ID,myName=self.name)+"\n"
         return buf
+
+class Usrbin(GeoObject):
+    '''
+    A very basic class for handling USRBIN cards.
+    For the time being, there is support only for:
+    - parsing/echoing;
+    - always 2 cards to fully define scoring;
+    - addition of ROTPRBIN cards; the mapping to the transformation
+      is ALWAYS name-based;
+    - NO comments between USRBIN cards defining the same scoring detector;
+    - a 1:1 mapping between ROTPRBIN and USRBIN cards, with the
+      ROTPRBIN always preceding the respective USRBIN card;
+    - parsing ALWAYS in FIXED format;
+    '''
+    def __init__(self):
+        GeoObject.__init__(self)
+        self.definition=[] # array of strings storing the lines defining the
+                           #   USRBIN. NB: USRBIN tags, & char and bin name
+                           #   are NOT stored.
+        self.TransfName=""
+
+    def echo(self):
+        '''take into account comment'''
+        tmpBuf=GeoObject.echoComm(self)
+        if (len(tmpBuf)>0):
+            tmpBuf=tmpBuf+"\n"
+        if (len(TransfName)>0):
+            tmpBuf=tmpBuf+"ROTPRBIN  %10s%10s%10s%10s\n"\
+                %("",self.TransfName,"",self.echoName())
+        tmpBuf=tmpBuf+"USRBIN%60s%-10s\n"%(self.definition[0],self.echoName())
+        if (len(self.definition)):
+            # continuation card
+            tmpBuf=tmpBuf+"USRBIN%60s&\n"%(self.definition[1])
+        return tmpBuf
                         
+    @staticmethod
+    def fromBuf(self,myBuffer):
+        newUsrBin=Usrbin()
+        for myLine in myBuffer.split():
+            if (myLine.startswith("*")):
+                newUsrBin.tailMe(myLine)
+            elif (myLine.startswith("ROTPRBIN")):
+                newUsrBin.assignTrasf(myLine[20:30].strip())
+                if (len(newUsrBin.TransfName)==0):
+                    print("...something wrong when parsing USRBIN cards: no ROT-DEFI card name!")
+                    exit(1)
+            else:
+                newUsrBin.definition.append(myLine[10:70])
+                if (len(self.definition)==1):
+                    newUsrBin.rename(myLine[70:].strip())
+        if (len(self.definition)!=2):
+            print("...something wrong when parsing USRBIN cards: got %d lines!"\
+                  %(len(self.definition)))
+            exit(1)
+        if (len(self.name)==0):
+            print("...something wrong when parsing USRBIN cards: no name!")
+            exit(1)
+        return newUsrBin
+
+    def assignTrasf(self,trasfName):
+        if (len(trasfName)>0):
+            self.TransfName=trasfName
+    def returnTrasf(self):
+        return self.TransfName
+    
 class Geometry():
     '''
     - name-based FLUKA geometry defition;
@@ -390,17 +456,19 @@ class Geometry():
     - NO support for #include cards or geo defitions in files other than that
        being parsed;
     - comments:
-      . body: commented lines are considered always before the comment, and only
-              commented lines before the body will be retained;
-              --> trailing comments to body declaration section will disappear!
+      . in general, only comments preceeding a specific card are retained;
+        --> trailing comments to body declaration section will disappear!
+      . body: commented lines are considered always before the body;
       . region: commented lines are kept where they are found, if they are
                 found before or along the region declaration;
-              --> trailing comments to region declaration will disappear!
+      . rot-defi: commented lines are considered always before the rot-defi card;
+      . usrbin: commented lines are considered always before the URSBIN card;
     '''
     def __init__(self):
         self.bods=[]
         self.regs=[]
         self.tras=[]
+        self.bins=[]
         self.title=""
 
     def add(self,tmpEl,what="body"):
@@ -413,6 +481,8 @@ class Geometry():
             self.regs.append(tmpEl)
         elif (what.upper().startswith("TRANSF")):
             self.tras.append(tmpEl)
+        elif (what.upper().startswith("BIN")):
+            self.bins.append(tmpEl)
         else:
             print("...what do you want to add to geometry? %s NOT recognised!"%(what))
             exit(1)
@@ -428,6 +498,15 @@ class Geometry():
         myEntry,iEntry=self.ret(myReg,what="REG")
         self.regs[iEntry].assignMat(myMat)
 
+    def rotdefi(self,tmpBuf,lFree=True):
+        tmpRotDefi,myID,myName=RotDefi.fromBuf(tmpBuf,lFree=lFree)
+        myEntry,iEntry=self.ret("TRANSF",myName)
+        if (iEntry==-1):
+            # brand new transformation
+            self.add(tmpRotDefi,"TRANSF")
+        else:
+            self.tras[iEntry].AddRotDefi(tmpRotDefi)
+
     def headMe(self,myString,begLine="* \n"+"* "+"="*108,endLine="* "+"-"*108+"\n* "):
         '''
         simple method to head a string to the geometry declaration (bodies,
@@ -440,6 +519,8 @@ class Geometry():
             self.regs[0].headMe(actualString)
         if (len(self.tras)>0):
             self.tras[0].headMe(actualString)
+        if (len(self.bins)>0):
+            self.bins[0].headMe(actualString)
             
     def ret(self,myWhat,myName):
         lFound=False
@@ -470,6 +551,15 @@ class Geometry():
                     if (myEntry.echoName()==myName):
                         lFound=True
                         break
+        elif (what.upper().startswith("BIN") or what.upper().startswith("USRBIN")):
+            if (myName.upper()=="ALL"):
+                myEntry=[ myBin.echoName() for myBin in self.bins ]
+                iEntry=[ ii for ii in range(len(self.bins)) ]
+            else:
+                for iEntry,myEntry in enumerate(self.bins):
+                    if (myEntry.echoName()==myName):
+                        lFound=True
+                        break
         else:
             print("%s not recognised! What should I look for in the geometry?"%(myWhat))
             exit(1)
@@ -496,21 +586,17 @@ class Geometry():
                 elif (tmpLine.startswith("ASSIGNMA")):
                     newGeom.assignma(tmpLine)
                 elif (tmpLine.startswith("ROT-DEFI")):
-                    # acquire ROT-DEFI card
-                    tmpRotDefi=RotDefi()
-                    myID,myName=tmpRotDefi.fromBuf(tmpBuf,lFree=lFree)
-                    myEntry,iEntry=self.ret("TRANSF",myName)
-                    if (iEntry==-1):
-                        # brand new transformation
-                        self.add(tmpRotDefi,"TRANSF")
-                    else:
-                        self.tras[iEntry].AddRotDefi(tmpRotDefi)
+                    newGeom.rotdefi(tmpBuf,lFree=lFree)
                     tmpBuf="" # flush buffer
+                elif (tmpLine.startswith("ROTPRBIN")):
+                    tmpBuf=tmpBuf+tmpLine
+                elif (tmpLine.startswith("USRBIN")):
+                    tmpBuf=tmpBuf+tmpLine
+                    if(tmpLine.strip().endswith("&"):
+                       newGeom.add(Usrbin.fromBuf(tmpBuf),"BIN")
+                       tmpBuf="" # flush buffer
                 elif (tmpLine.startswith("*")):
-                    if (len(tmpBuf)>0):
-                        tmpBuf=tmpBuf+"\n"+tmpLine
-                    else:
-                        tmpBuf=tmpLine
+                    tmpBuf=tmpBuf+tmpLine
                 elif (tmpLine.startswith("FREE")):
                     lFree=True
                 elif (tmpLine.startswith("FIXED")):
@@ -581,7 +667,8 @@ class Geometry():
         for myGeo in myGeos:
             new.bods=new.bods+myGeo.bods
             new.regs=new.regs+myGeo.regs
-            new.tras=new.regs+myGeo.tras
+            new.tras=new.tras+myGeo.tras
+            new.bins=new.bins+myGeo.bins
         if (myTitle is None):
             myTitle="appended geometries"
         new.title=myTitle
@@ -640,6 +727,15 @@ class Geometry():
             ff.write("* \n")
             ff.close()
             print("...done;")
+        elif (what.upper().startswith("BIN")):
+            print("saving USRBINs in file %s..."%(oFileName))
+            ff=open(oFileName,dMode)
+            ff.write("* \n")
+            for tmpBin in self.bins:
+                ff.write("%s\n"%(tmpBin.echo()))
+            ff.write("* \n")
+            ff.close()
+            print("...done;")
         elif (what.upper()=="ALL"):
             if (lSplit):
                 if (oFileName.endswith(".inp")):
@@ -655,6 +751,9 @@ class Geometry():
                     if (len(self.tras)>0):
                         self.echo(oFileName.replace(".inp","_rotdefis.inp",1),\
                               lSplit=False,what="transf",dMode="w")
+                    if (len(self.bins)>0):
+                        self.echo(oFileName.replace(".inp","_usrbins.inp",1),\
+                              lSplit=False,what="bin",dMode="w")
                 else:
                     # split geometry definition into a .geo file
                     #   and an assignmat file; the former is encapsulated
@@ -676,6 +775,9 @@ class Geometry():
                     if (len(self.tras)>0):
                         self.echo(oFileName.replace(".geo","_rotdefis.inp",1),\
                               lSplit=False,what="transf",dMode="w")
+                    if (len(self.bins)>0):
+                        self.echo(oFileName.replace(".geo","_usrbins.inp",1),\
+                              lSplit=False,what="bin",dMode="w")
             else:
                 ff=open(oFileName,"w")
                 ff.write("%-10s%60s%-10s\n"%("GEOBEGIN","","COMBNAME"))
@@ -693,6 +795,8 @@ class Geometry():
                 if (len(self.tras)>0):
                     self.echo(oFileName,lSplit=False,what="transf",dMode="a")
                 self.echo(oFileName,lSplit=False,what="materials",dMode="a")
+                if (len(self.bins)>0):
+                    self.echo(oFileName,lSplit=False,what="bin",dMode="a")
         else:
             print("...what should I echo? %s NOT reconised!"%(what))
 
@@ -725,6 +829,7 @@ class Geometry():
             exit(1)
         newNameFmt=newName+"%0"+"%d"%(maxLenName-len(newName))+"d"
         oldBodyNames=[]; newBodyNames=[]
+        oldTrasNames=[]; newTrasNames=[]
         for iBody in range(len(self.bods)):
             oldBodyNames.append(self.bods[iBody].echoName())
             newBodyNames.append(newNameFmt%(iBody+1))
@@ -733,7 +838,23 @@ class Geometry():
             self.regs[iReg].rename(newNameFmt%(iReg+1),lNotify=lNotify)
             self.regs[iReg].BodyNameReplaceInDef(oldBodyNames,newBodyNames)
         for iTras in range(len(self.tras)):
-            self.tras[iTras].rename(newNameFmt%(iTras+1),lNotify=lNotify)
+            oldTrasNames.append(self.tras[iTras].echoName())
+            newTrasNames.append(newNameFmt%(iTras+1))
+            self.tras[iTras].rename(newTrasNames[-1],lNotify=lNotify)
+        for iBin in range(len(self.bins)):
+            self.bins[iBin].rename(newNameFmt%(iBin+1),lNotify=lNotify)
+            trName=self.bins[iBin].returnTrasf()
+            if (len(trName)):
+                lFound=False
+                for oldTrasName,newTrasName in zip(oldTrasNames,newTrasNames):
+                    if (trName==oldTrasName):
+                        self.bins[iBin].assignTrasf(newTrasName)
+                        lFound=True
+                        break
+                if (not lFound):
+                    print("cannot find transformation named %s!"%(trName))
+                    exit(1)
+                    
 
     def flagRegs(self,whichRegs,rCont,rCent):
         if (whichRegs is str):
