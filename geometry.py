@@ -830,6 +830,7 @@ class Geometry():
         print("...done.")
 
     def rename(self,newName,lNotify=True):
+        print("renaming geometry...")
         maxLenName=8
         if (len(newName)>=maxLenName):
             print("Geometry.rename(): cannot rename entities with len(%s)>=%d!"%(newName,maxLenName))
@@ -864,6 +865,7 @@ class Geometry():
             else:
                 print("Geometry.rename(): USRBIN with no original name in geometry!")
                 exit(1)
+        print("...done.")
 
     def flagRegs(self,whichRegs,rCont,rCent):
         if (whichRegs is str):
