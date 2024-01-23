@@ -3,11 +3,10 @@
 # python version: >= 3.8.10;
 
 import numpy as np
-import copy
 
 class Matrix:
     '''
-    very simple class coding a 2D matrix
+    very simple class coding a 2D SQUARED matrix
     '''
 
     def __init__(self,nDim=3):
@@ -32,23 +31,23 @@ class Matrix:
         return buf
 
     def mulMat(self,RMat,lDebug=True):
-        'method to multiply 2D squared matrices of the same number of rows'
+        'method to multiply squared matrices of the same number of rows'
         if (self.nDim!=RMat.nDim):
             print("cannot multiply a %dx%d matrix times a %dx%d matrix"%\
                   (self.nDim,self.nDim,RMat.nDim,RMat.nDim))
             exit(1)
-        newMat=copy.deepcopy(self)
+        newMat=Matrix(self.nDim)
         for ii in range(self.nDim):
             for jj in range(self.nDim):
-                self[ii,jj]=sum([ newMat[ii,kk]*RMat[kk,jj]\
+                newMat[ii,jj]=sum([ self[ii,kk]*RMat[kk,jj]\
                                         for kk in range(self.nDim)])
         if (lDebug):
             print("Matrix.mulMat():")
             print(self.echo())
-        return
+        return newMat
 
     def mulArr(self,myArr,lDebug=True):
-        'method to multiply a 2D squared matrix by an array'
+        'method to multiply a squared matrix by an array'
         if (self.nDim!=len(myArr)):
             print("cannot multiply a %dx%d matrix times a %d array"%\
                   (self.nDim,self.nDim,len(myArr)))
@@ -60,6 +59,76 @@ class Matrix:
         if (lDebug):
             print("Matrix.mulArr():",out)
         return out
+
+    def mulSca(self,mySca):
+        'method to multiply a squared matrix by an array'
+        newMat=Matrix(self.nDim)
+        for ii in range(self.nDim):
+            for jj in range(self.nDim):
+                newMat[ii,jj]=self[ii,jj]*mySca
+        return newMat
+
+    def Minor(self,ll,mm):
+        'calculate minor of self at pos ll,mm'
+        newMat=Matrix(self.nDim-1)
+        kk=0
+        for ii in range(self.nDim):
+            if (ii==ll):
+                continue
+            nn=0
+            for jj in range(self.nDim):
+                if (jj==mm):
+                    continue
+                newMat[kk,nn]=self[ii,jj]
+                nn=nn+1
+            kk=kk+1
+        return newMat
+
+    def MinMat(self):
+        'calculate matrix of minors'
+        newMat=Matrix(self.nDim)
+        for ii in range(self.nDim):
+            for jj in range(self.nDim):
+                newMat[ii,jj]=self.Minor(ii,jj).det()
+        return newMat
+
+    def CofactMat(self):
+        'calculate matrix of co-factors'
+        newMat=Matrix(self.nDim)
+        for ii in range(self.nDim):
+            for jj in range(self.nDim):
+                newMat[ii,jj]=self[ii,jj]
+                if ((ii+jj)%2==1):
+                    newMat[ii,jj]=-newMat[ii,jj]
+        return newMat
+
+    def AdjugateMat(self):
+        'calculate adjugate matrix, i.e. the transposed'
+        newMat=Matrix(self.nDim)
+        for ii in range(self.nDim):
+            for jj in range(self.nDim):
+                newMat[ii,jj]=self[jj,ii]
+        return newMat
+
+    def det(self):
+        'calculate the determinant of the matrix'
+        if (self.nDim==2):
+            return self[0,0]*self[1,1]-self[1,0]*self[0,1]
+        else:
+            det=0.0
+            for ii in range(self.nDim):
+                det=det+self[0,ii]*self.Minor(0,ii).det()
+            return det
+
+    def inv(self):
+        '''
+        invert the matrix - based on:
+        https://www.mathsisfun.com/algebra/matrix-inverse-minors-cofactors-adjugate.html
+        '''
+        newMat=self.MinMat()
+        newMat=newMat.CofactMat()
+        newMat=newMat.AdjugateMat()
+        return newMat.mulSca(self.det())
 
 class UnitMat(Matrix):
     '''
@@ -140,7 +209,7 @@ class RotMat(UnitMat):
             print("concatenating them...")
         newMat=UnitMat()
         for iTrasf in range(len(myAngs)-1,-1,-1):
-            newMat.mulMat(rotMatrices[iTrasf],lDebug=lDebug)
+            newMat=newMat.mulMat(rotMatrices[iTrasf],lDebug=lDebug)
             
         return newMat
                 
@@ -149,4 +218,6 @@ if (__name__=="__main__"):
     myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
     myMat=RotMat.ConcatenatedRotMatrices(myAngs=[90,90,90],myAxes=[1,2,3],\
                                   lDegs=True,lDebug=lDebug)
-
+    print(myMat.det())
+    print(myMat.echo())
+    print(myMat.inv().echo())
