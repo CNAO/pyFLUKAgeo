@@ -12,7 +12,8 @@ class GeoObject():
     '''
     A very basic object, implementing simply a name and a comment.
     This object is supposed to collect all the stuff concerning
-      handling of names and modification of comments
+      handling of names and modification of comments of instances
+      of the other classes;
     '''
 
     def __init__(self):
@@ -242,7 +243,7 @@ class Region(GeoObject):
 class RotDefi(GeoObject):
     '''
     Class handling ROT-DEFI cards.
-    Please have a look also to the Transformation class: the ROT-DEFI
+    Please have a look also to the Transformation() class: the ROT-DEFI
        class simply stores infos of a specific rotation/traslation;
     - echo in FREE format uses an empty space as field separator;
     - parsing in FREE format expects an empty space as field separator;
@@ -365,12 +366,14 @@ class Transformation(GeoObject):
                 myID,myName=tmpRotDefi.fromBuf(myBuf)
                 if (myID!=0):
                     if (newTransf.ID==0):
+                        # first ROT-DEFI card of transformation
                         newTransf.ID=myID
                     elif(newTransf.ID!=myID):
                         print("...cannot add ROT-DEFI with ID=%d to tranformation ID=%d!"%(myID,newTransf.ID))
                         exit(1)
                 if (len(myName)>0):
                     if (len(newTransf.echoName())==0):
+                        # first ROT-DEFI card of transformation
                         newTransf.rename(myName,lNotify=False)
                     elif (newTransf.echoName()!=myName):
                         print("...cannot add ROT-DEFI named %s to tranformation named %s !"%(myName,newTransf.echoName()))
@@ -391,11 +394,10 @@ class Usrbin(GeoObject):
     For the time being, there is support only for:
     - parsing/echoing;
     - always 2 cards to fully define scoring;
-    - addition of ROTPRBIN cards; the mapping to the transformation
-      is ALWAYS name-based;
+    - a single ROTPRBIN card per transformation (1:1 mapping between ROTPRBIN and
+      USRBIN cards); the mapping to the transformation is ALWAYS name-based;
+      the ROTPRBIN card always PRECEEDs the respective USRBIN card;
     - NO comments between USRBIN cards defining the same scoring detector;
-    - a 1:1 mapping between ROTPRBIN and USRBIN cards, with the
-      ROTPRBIN always preceding the respective USRBIN card;
     - parsing ALWAYS in FIXED format;
     '''
     def __init__(self):
@@ -414,7 +416,7 @@ class Usrbin(GeoObject):
             tmpBuf=tmpBuf+"ROTPRBIN  %10s%10s%10s%10s\n"\
                 %("",self.TransfName,"",self.echoName())
         tmpBuf=tmpBuf+"USRBIN%60s%-10s\n"%(self.definition[0],self.echoName())
-        if (len(self.definition)):
+        if (len(self.definition)>1):
             # continuation card
             tmpBuf=tmpBuf+"USRBIN%60s&\n"%(self.definition[1])
         return tmpBuf
@@ -481,7 +483,7 @@ class Geometry():
             self.regs.append(tmpEl)
         elif (what.upper().startswith("TRANSF")):
             self.tras.append(tmpEl)
-        elif (what.upper().startswith("BIN")):
+        elif (what.upper().startswith("BIN") or what.upper().startswith("USRBIN")):
             self.bins.append(tmpEl)
         else:
             print("...what do you want to add to geometry? %s NOT recognised!"%(what))
@@ -491,6 +493,7 @@ class Geometry():
         self.title=tmpTitle
         
     def assignma(self,tmpLine):
+        'crunch info by ASSIGNMA card'
         data=tmpLine.split()
         myMat=data[1]
         myReg=data[2]
@@ -499,6 +502,7 @@ class Geometry():
         self.regs[iEntry].assignMat(myMat)
 
     def rotdefi(self,tmpBuf,lFree=True):
+        'crunch info by ROT-DEFI card'
         tmpRotDefi,myID,myName=RotDefi.fromBuf(tmpBuf,lFree=lFree)
         myEntry,iEntry=self.ret("TRANSF",myName)
         if (iEntry==-1):
@@ -510,7 +514,7 @@ class Geometry():
     def headMe(self,myString,begLine="* \n"+"* "+"="*108,endLine="* "+"-"*108+"\n* "):
         '''
         simple method to head a string to the geometry declaration (bodies,
-           regions, assignma cards)
+           regions, assignma, usrbin, rot-defi cards)
         '''
         actualString=begLine+"\n* "+myString+" \n"+endLine
         if (len(self.bods)>0):
@@ -570,6 +574,9 @@ class Geometry():
 
     @staticmethod
     def fromInp(myInpName):
+        '''
+        FREE format used only for parsing ROT-DEFI cards (blank space as separator)!
+        '''
         newGeom=Geometry()
         print("parsing file %s..."%(myInpName))
         ff=open(myInpName,'r')
@@ -593,7 +600,7 @@ class Geometry():
                 elif (tmpLine.startswith("USRBIN")):
                     tmpBuf=tmpBuf+tmpLine
                     if(tmpLine.strip().endswith("&"):
-                       newGeom.add(Usrbin.fromBuf(tmpBuf),"BIN")
+                       newGeom.add(Usrbin.fromBuf(tmpBuf),what="BIN")
                        tmpBuf="" # flush buffer
                 elif (tmpLine.startswith("*")):
                     tmpBuf=tmpBuf+tmpLine
@@ -624,7 +631,7 @@ class Geometry():
                     tmpBuf=tmpBuf+tmpLine
                     if (not tmpLine.startswith("*")):
                         # acquire body
-                        newGeom.add(Body.fromBuf(tmpBuf.strip()))
+                        newGeom.add(Body.fromBuf(tmpBuf.strip()),what="BODY")
                         tmpBuf="" # flush buffer
             elif (lRead==3):
                 # definition of FLUKA regions
@@ -676,7 +683,7 @@ class Geometry():
 
     def echo(self,oFileName,lSplit=False,what="all",dMode="w"):
         '''
-        - what="all"/"bodies"/"regions"/"materials"
+        - what="all"/"bodies"/"regions"/"materials"/"transformation"/"bins"
         In case oFileName ends with ".geo", lSplit is activated,
            overriding the user request, and bodies/regions are
            dumped in the .geo file, whereas assignmat cards are
@@ -740,8 +747,8 @@ class Geometry():
             if (lSplit):
                 if (oFileName.endswith(".inp")):
                     # split geometry definition into bodies,
-                    #   regions and assignmat files, to be used with
-                    #   pure #include statements;
+                    #   regions, assignmat, rotdefi and usrbin files,
+                    #   to be used with pure #include statements;
                     self.echo(oFileName.replace(".inp","_bodies.inp",1),\
                               lSplit=False,what="bodies",dMode="w")
                     self.echo(oFileName.replace(".inp","_regions.inp",1),\
@@ -756,9 +763,9 @@ class Geometry():
                               lSplit=False,what="bin",dMode="w")
                 else:
                     # split geometry definition into a .geo file
-                    #   and an assignmat file; the former is encapsulated
-                    #   between GEOBEGIN and GEOEND cards, the other is
-                    #   imported via an #include statement
+                    #   and an assignmat, rotdefi and usrbin files;
+                    #   the former is encapsulated between GEOBEGIN and GEOEND cards,
+                    #   the other is imported via an #include statement
                     ff=open(oFileName,"w")
                     ff.write("% 5d% 5d%10s%s\n"%(0,0,"",self.title))
                     ff.close()
@@ -844,7 +851,7 @@ class Geometry():
         for iBin in range(len(self.bins)):
             self.bins[iBin].rename(newNameFmt%(iBin+1),lNotify=lNotify)
             trName=self.bins[iBin].returnTrasf()
-            if (len(trName)):
+            if (len(trName)>0):
                 lFound=False
                 for oldTrasName,newTrasName in zip(oldTrasNames,newTrasNames):
                     if (trName==oldTrasName):
@@ -854,7 +861,9 @@ class Geometry():
                 if (not lFound):
                     print("cannot find transformation named %s!"%(trName))
                     exit(1)
-                    
+            else:
+                print("Geometry.rename(): USRBIN with no original name in geometry!")
+                exit(1)
 
     def flagRegs(self,whichRegs,rCont,rCent):
         if (whichRegs is str):
