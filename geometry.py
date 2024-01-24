@@ -674,6 +674,8 @@ class Geometry():
         for myGeo in myGeos:
             new.bods=new.bods+myGeo.bods
             new.regs=new.regs+myGeo.regs
+            for ii,myTras in enumerate(myGeo.tras,1):
+                myTras.ID=ii+len(new.tras)
             new.tras=new.tras+myGeo.tras
             new.bins=new.bins+myGeo.bins
         if (myTitle is None):
