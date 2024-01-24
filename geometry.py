@@ -16,9 +16,9 @@ class GeoObject():
       of the other classes;
     '''
 
-    def __init__(self):
-        self.name=""
-        self.comment=""
+    def __init__(self,myName="",myComment=""):
+        self.name=myName
+        self.comment=myComment
 
     def rename(self,newName,lNotify=True):
         '''change instance name'''
@@ -58,11 +58,11 @@ class Body(GeoObject):
     - no support for $start_* cards;
     '''
 
-    def __init__(self):
+    def __init__(self,myName="",myComment=""):
         '''
         default body is a FLUKA PLA
         '''
-        GeoObject.__init__(self)
+        GeoObject.__init__(self,myName=myName,myComment=myComment)
         self.bType="PLA"
         self.P=np.zeros(3)
         self.V=np.array([0.0,0.0,1.0])
@@ -151,8 +151,8 @@ class Region(GeoObject):
       assignment for decay radiation simulation, NO magnetic/electric fields;
     '''
 
-    def __init__(self):
-        GeoObject.__init__(self)
+    def __init__(self,myName="",myComment=""):
+        GeoObject.__init__(self,myName=myName,myComment=myComment)
         self.neigh=5
         self.definition=""
         self.material="BLACKHOLE"
@@ -249,12 +249,13 @@ class RotDefi(GeoObject):
     - parsing in FREE format expects an empty space as field separator;
     '''
 
-    def __init__(self):
-        GeoObject.__init__(self) # mainly for comments, name NOT used!
-        self.axis=3    # FLUKA coding: 1=x, 2=y, 3=z
-        self.phi=0.0   # polar angle [degrees] (FLUKA units)
-        self.theta=0.0 # azimuth angle [degrees] (FLUKA units)
-        self.DD=np.zeros(3) # translation [cm] (x,y,z components)
+    def __init__(self,myAx=3,myPhi=0.0,myTh=0.0,myDD=np.zeros(3),myComment=""):
+        # mainly for comments, name NOT used!
+        GeoObject.__init__(self,myComment=myComment)
+        self.axis=myAx           # FLUKA coding: 1=x, 2=y, 3=z
+        self.phi=myPhi           # polar angle [degrees] (FLUKA units)
+        self.theta=myTh          # azimuth angle [degrees] (FLUKA units)
+        self.DD=myDD             # translation [cm] (x,y,z components)
 
     def echo(self,lFree=True,myID=0,myName=""):
         '''echo in FREE format uses an empty space as field separator'''
@@ -317,10 +318,10 @@ class Transformation(GeoObject):
     The class implements an array of ROT-DEFI cards - hence, at least one card.
     '''
 
-    def __init__(self):
-        GeoObject.__init__(self) # mainly for names, comments NOT used!
+    def __init__(self,myID=0,myName=""):
+        GeoObject.__init__(self,myName=myName) # mainly for names, comments NOT used!
         self.RotDefis=[] # list of ROT-DEFI cards
-        self.ID=0
+        self.ID=myID
         
     def __len__(self):
         return len(self.RotDefis)
@@ -348,8 +349,20 @@ class Transformation(GeoObject):
     def echoComm(self):
         self.RotDefis[0].echoComm()
 
-    def AddRotDefi(self,newRotDefi):
-        self.RotDefis.append(newRotDefi)
+    def AddRotDefi(self,newRotDefi,iAdd=-1,lMoveComment=True):
+        if (iAdd==-1 or iAdd==len(self.RotDefis)):
+            # append ROT-DEFI card to list of ROT-DEFIs
+            self.RotDefis.append(newRotDefi)
+        elif (iAdd==0):
+            # head ROT-DEFI card to list of ROT-DEFIs
+            if (lMoveComment):
+                # take care of main comment
+                newRotDefi.headMe(self.echoComm())
+                self.RotDefis[0].comment=""
+            self.RotDefis=newRotDefi+self.RotDefis
+        else:
+            # insert ROT-DEFI card at specific position in the list of ROT-DEFIs
+            self.RotDefis=self.RotDefis[0:iAdd]+newRotDefi+self.RotDefis[iAdd:]
 
     @staticmethod
     def fromBuf(self,myBuffer,lFree=True):
@@ -400,8 +413,8 @@ class Usrbin(GeoObject):
     - NO comments between USRBIN cards defining the same scoring detector;
     - parsing ALWAYS in FIXED format;
     '''
-    def __init__(self):
-        GeoObject.__init__(self)
+    def __init__(self,myName="",myComment=""):
+        GeoObject.__init__(self,myName=myName,myComment=myComment)
         self.definition=[] # array of strings storing the lines defining the
                            #   USRBIN. NB: USRBIN tags, & char and bin name
                            #   are NOT stored.
@@ -811,24 +824,53 @@ class Geometry():
 
     def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lDebug=False):
         print("applying solid transformation(s)...")
-        if (myMat is not None):
-            print("...applying transformation expressed by matrix to geometry...")
-            for ii in range(len(self.bods)):
-                self.bods[ii].rotate(myMat=myMat,myTheta=None,myAxis=None,\
-                                     lDegs=lDegs,lDebug=lDebug)
-        elif (myTheta is not None):
-            print("...applying rotation by %f degs around axis %d..."%\
-                  (myTheta,myAxis))
-            for ii in range(len(self.bods)):
-                self.bods[ii].rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,\
-                                     lDegs=lDegs,lDebug=lDebug)
-        if (dd is not None):
-            print("...applying traslation array [%f,%f,%f] cm..."%\
-                  (dd[0],dd[1],dd[2]))
-            for ii in range(len(self.bods)):
-                self.bods[ii].traslate(dd=dd)
         if (myMat is None and myTheta is None and dd is None):
             print("...no transformation provided!")
+        else:
+            ROTDEFIlist=[]
+            if (myMat is not None):
+                print("...applying transformation expressed by matrix to geometry...")
+                for ii in range(len(self.bods)):
+                    self.bods[ii].rotate(myMat=myMat,myTheta=None,myAxis=None,\
+                                         lDegs=lDegs,lDebug=lDebug)
+                thetas=myMat.GetGimbalAngles()
+                for myAx,myTh in enumerate(thetas,1):
+                    if (myTh!=0.0):
+                        ROTDEFIlist.append(RotDefi(myAx=myAx,myTh=-myTh))
+            elif (myTheta is not None):
+                if (myTheta!=0.0):
+                    print("...applying rotation by %f degs around axis %d..."%\
+                          (myTheta,myAxis))
+                    for ii in range(len(self.bods)):
+                        self.bods[ii].rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,\
+                                             lDegs=lDegs,lDebug=lDebug)
+                    ROTDEFIlist.append(RotDefi(myAx=myAxis,myTh=-myTheta))
+            if (dd is not None):
+                print("...applying traslation array [%f,%f,%f] cm..."%\
+                      (dd[0],dd[1],dd[2]))
+                for ii in range(len(self.bods)):
+                    self.bods[ii].traslate(dd=dd)
+                myDD=-dd
+                if (isinstance(myDD,list)):
+                    myDD=np.array(DD)
+                ROTDEFIlist=RotDefi(myDD=myDD)+ROTDEFIlist
+            if (len(ROTDEFIlist)>0):
+                # - check presence of USRBINs without ROTPRBIN cards:
+                #   if there is one, add the transformation
+                lCreate=False
+                myName="ToFinPos"
+                for myBin in self.bins:
+                    if ( myBin.returnTrasf()=="" ):
+                        lCreate=True
+                        myBin.assignTrasf(myName)
+                if (lCreate):
+                    self.add(Transformation(myID=len(self.tras),myName=myName),what="tras")
+                # - add list of ROT-DEFIs for the solid transformation to the list
+                #   of existing transformation
+                for myTras in self.tras:
+                    for myRotDefi in reversed(ROTDEFIlist):
+                        myTras.AddRotDefi(myRotDefi,iAdd=0)
+                    
         print("...done.")
 
     def rename(self,newName,lNotify=True):
