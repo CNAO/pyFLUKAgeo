@@ -80,15 +80,15 @@ class Grid:
             buf=buf+myLoc.echo(myFmt=myFmt)+"\n"
         return buf
 
-    def ret(self,myWhat="point",iEl=-1):
-        if (myWhat.upper()=="POINT"):
+    def ret(self,what="point",iEl=-1):
+        if (what.upper()=="POINT"):
             return self.locs[iEl].P
-        elif (myWhat.upper()=="REF"):
+        elif (what.upper()=="REF"):
             return self.locs[iEl].W
-        elif (myWhat.upper()=="LAB"):
+        elif (what.upper()=="LAB"):
             return self.locs[iEl].label
         else:
-            print("Grid.ret(): unknown request %s!"%(myWhat))
+            print("Grid.ret(): unknown request %s!"%(what))
             exit(1)
 
     @staticmethod
@@ -261,19 +261,19 @@ class SphericalHive(Hive):
         '''
         return SphericalHive(R,R+dR,1,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
 
-    def ret(self,myWhat="all"):
-        if (myWhat.upper()=="RRS"):
+    def ret(self,what="all"):
+        if (what.upper()=="RRS"):
             return self.RRs
-        elif (myWhat.upper()=="TTS"):
+        elif (what.upper()=="TTS"):
             return self.TTs
-        elif (myWhat.upper()=="PPS"):
+        elif (what.upper()=="PPS"):
             return self.PPs
-        elif (myWhat.upper()=="ALL"):
-            return self.ret(myWhat="RRs"), \
-                   self.ret(myWhat="TTs"), \
-                   self.ret(myWhat="PPs")
+        elif (what.upper()=="ALL"):
+            return self.ret(what="RRs"), \
+                   self.ret(what="TTs"), \
+                   self.ret(what="PPs")
         else:
-            print("SphericalHive.ret(): what to return? %s"%(myWhat))
+            print("SphericalHive.ret(): what to return? %s"%(what))
 
 if ( __name__ == "__main__" ):
     # perform some tests
