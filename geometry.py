@@ -68,16 +68,15 @@ class Body(GeoObject):
         self.V=np.array([0.0,0.0,1.0])
         self.Rs=np.zeros(2)
 
-    def echo(self):
+    def echo(self,numFmt=" % 15.8E"):
         '''take into account comment'''
         if (self.bType=="PLA"):
-            return GeoObject.echoComm(self)+ \
-                "PLA %8s % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E" % \
-                ( self.echoName(), self.V[0], self.V[1], self.V[2], \
-                             self.P[0], self.P[1], self.P[2] )
+            return GeoObject.echoComm(self)+"PLA %8s"%(self.echoName())+\
+                numFmt*(len(self.V)+len(self.P))%( self.V[0], self.V[1], self.V[2], \
+                                                   self.P[0], self.P[1], self.P[2] )
         elif (self.bType=="SPH"):
-            return GeoObject.echoComm(self)+"SPH %8s % 15.8E % 15.8E % 15.8E % 15.8E" \
-             % ( self.echoName(), self.P[0], self.P[1], self.P[2], self.Rs[0] )
+            return GeoObject.echoComm(self)+"SPH %8s"%(self.echoName())+\
+                numFmt*(len(self.P)+1)%( self.P[0], self.P[1], self.P[2], self.Rs[0] )
         else:
             print("body %s NOT supported yet!"%(self.bType))
             exit(1)
@@ -1052,13 +1051,13 @@ class Geometry():
         tmpReg.rename("HVAROUND",lNotify=False)
         tmpReg.material=defMat
         tmpReg.definition='''| +%-8s -%-8s -%-8s
-                | +%-8s -%-8s +%-8s
+                | +%-8s -%-8s +%-8s +%-8s
                 | +%-8s -%-8s +%-8s -%-8s +%-8s
-                | +%-8s -%-8s +%-8s -%-8s -%-8s'''%( \
+                | +%-8s -%-8s +%-8s -%-8s -%-8s -%-8s'''%( \
      spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), \
-     spheres[-1].echoName(),spheres[0].echoName(), thetas[ 0].echoName(), \
+     spheres[-1].echoName(),spheres[0].echoName(), thetas[ 0].echoName(), thetas[-1].echoName(), \
      spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[ 0].echoName(), \
-     spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName()  )
+     spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName(), phis[ 0].echoName()  )
         tmpReg.comment="* region around hive"
         newGeom.add(tmpReg,what="reg")
         # - actual hive
@@ -1297,9 +1296,9 @@ if (__name__=="__main__"):
     dR=50
     NR=1
     Tmax=1.0  # theta [degs] --> range: -Tmax:Tmax
-    NT=2      # number of steps (i.e. grid cells)
-    Pmax=1.0  # phi [degs] --> range: -Pmax:Pmax
-    NP=2      # number of steps (i.e. grid cells)
+    NT=1      # number of steps (i.e. grid cells)
+    Pmax=90   # phi [degs] --> range: -Pmax:Pmax
+    NP=19     # number of steps (i.e. grid cells)
     # Tmax=3.0  # theta [degs] --> range: -Tmax:Tmax
     # NT=4      # number of steps (i.e. grid cells)
     # Pmax=2.0  # phi [degs] --> range: -Pmax:Pmax

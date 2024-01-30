@@ -285,6 +285,7 @@ class SphericalHive(Hive):
             print("SphericalHive.ret(): what to return? %s"%(what))
 
 def CheckSphericalRange(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP):
+    'See the docstring of the Grid.SphericalShell() method'
     oRmin,oRmax,oNR,oTmin,oTmax,oNT,oPmin,oPmax,oNP = \
         Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP
     if (oRmin>oRmax):
