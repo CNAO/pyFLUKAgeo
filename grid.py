@@ -161,10 +161,15 @@ class Grid:
         if (NT<0):
             print("Grid.SphericalShell(): NT<0! - setting to NT=0")
             NT=0
+        elif (NT==1):
+            Tmean=(Tmax+Tmin)/2.
+            Tmin, Tmax = Tmean, Tmean
         if (NP<0):
             print("Grid.SphericalShell(): NP<0! - setting to NP=0")
             NP=0
-            
+        elif (NP==1):
+            Pmean=(Pmax+Pmin)/2.
+            Pmin, Pmax = Pmean, Pmean
         # define unique shell values of radius and angles
         # NB: np.linspace: num is number of points
         RRs=np.linspace(Rmin,Rmax,num=NR)
@@ -263,7 +268,8 @@ class SphericalHive(Hive):
         if (NT<=0):
             hTmax=Tmax; hTmin=Tmin; NT=-1
         elif (NT==1):
-            hTmax=Tmax-hdT/2.; hTmin=Tmin-hdT/2.
+            tMean=(Tmax+Tmin)/2.
+            hTmax=tMean+hdT/2.; hTmin=tMean-hdT/2.
         else:
             hdT=hdT/(NT-1)
             hTmax=Tmax+hdT/2.; hTmin=Tmin-hdT/2.
@@ -271,7 +277,8 @@ class SphericalHive(Hive):
         if (NP<=0):
             hPmax=Pmax; hPmin=Pmin; NP=-1
         elif (NP==1):
-            hPmax=Pmax-hdP/2.; hPmin=Pmin-hdP/2.
+            pMean=(Pmax+Pmin)/2.
+            hPmax=pMean+hdP/2.; hPmin=pMean-hdP/2.
         else:
             hdP=hdP/(NP-1)
             hPmax=Pmax+hdP/2.; hPmin=Pmin-hdP/2.
