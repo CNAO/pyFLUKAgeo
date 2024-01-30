@@ -13,22 +13,52 @@ import myMath
 class Location:
     '''
     a very simple class storing a single position (3D array) and a single
-       orientation (3D rotation matrix)
+       orientation (3D rotation matrix).
+    Additionally, the sequence of rotations giving rise to the final
+       orientation is also stored.
+    Rotation axes are labelled as: x=1, y=2, z=3;
     '''
-    def __init__(self,myP=[0.,0.,0.],myW=myMath.UnitMat,myLab=""):
+    def __init__(self,myP=[0.,0.,0.],myW=myMath.UnitMat,myAngs=[0.,0.,0.],myAxes=[1,2,3],myLab=""):
         self.P=myP
         self.W=myW
+        self.angs=myAngs # [degs]
+        self.axes=myAxes
         self.label=myLab
 
     def ret(self,what):
+        'a return method'
         if (what.upper()=="POINT"):
             return self.P
         elif (what.upper()=="MATRIX"):
             return self.W
+        elif (what.upper().startswith("ANGLE")):
+            return self.angs
+        elif (what.upper().startswith("AX")):
+            return self.axes
         elif (what.upper()=="LABEL"):
             return self.label
+        else:
+            print("Location.ret(): unknown request %s!"%(what))
+            exit(1)
+
+    def set(self,what,value):
+        'a set method'
+        if (what.upper()=="POINT"):
+            self.P=value
+        elif (what.upper()=="MATRIX"):
+            self.W=value
+        elif (what.upper().startswith("ANGLE")):
+            self.angs=value
+        elif (what.upper().startswith("AX")):
+            self.axes=value
+        elif (what.upper()=="LABEL"):
+            self.label=value
+        else:
+            print("Location.set(): unknown request %s!"%(what))
+            exit(1)
 
     def echo(self,myFmt="% 13.6E",mySep="; "):
+        'echo method, to write out self.P and self.W'
         buf="P=["
         for tmpX in self.P:
             buf=buf+" "+myFmt%(tmpX)
@@ -43,6 +73,16 @@ class Location:
                     buf=buf+" "+mySep
         buf=buf+" | "+mySep+"label=\"%s\""%(self.label)+mySep
         return buf
+
+    def ComputeRotMat(self,lDebug=False):
+        'compute rotation matrix based on angles and axes'
+        if (len(self.angs)!=len(self.axes)):
+            print("Location.ComputeRotMat(): number of angles (%d) and axes (%d) differ!"\
+                  %(len(self.angs),len(self.axes)))
+            exit(1)
+        self.W=myMath.RotMat.ConcatenatedRotMatrices( \
+               myAngs=self.angs,myAxes=self.axes, \
+               lDegs=True,lDebug=lDebug)
         
 class Grid:
     '''
@@ -50,6 +90,7 @@ class Grid:
        geometry should be cloned. Coordinates/orientations are meant to move the
        centre of the prototype (expected to be at the origin of the FLUKA ref
        system) to the actual position/orientation.
+    The class is basically a list of locations.
     '''
     def __init__(self):
         self.locs=[] # list of Locations
@@ -71,8 +112,8 @@ class Grid:
             return x
         raise StopIteration
 
-    def AddLoc(self,myP=[0.,0.,0.],myW=myMath.UnitMat,myLab=""):
-        self.locs.append(Location(myP=myP,myW=myW,myLab=myLab))
+    def AddLoc(self,myLoc):
+        self.locs.append(myLoc)
 
     def echo(self,myFmt="% 13.6E"):
         buf=""
@@ -81,15 +122,7 @@ class Grid:
         return buf
 
     def ret(self,what="point",iEl=-1):
-        if (what.upper()=="POINT"):
-            return self.locs[iEl].P
-        elif (what.upper()=="REF"):
-            return self.locs[iEl].W
-        elif (what.upper()=="LAB"):
-            return self.locs[iEl].label
-        else:
-            print("Grid.ret(): unknown request %s!"%(what))
-            exit(1)
+        return self.locs[iEl].ret(what=what)
 
     @staticmethod
     def SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,\
@@ -144,11 +177,11 @@ class Grid:
             for tmpT in TTs:
                 for tmpP in PPs:
                     myLab="R[cm]=%g,theta[deg]=%g,phi[deg]=%g"%(tmpR,tmpT,tmpP)
-                    myW=myMath.RotMat.ConcatenatedRotMatrices( \
-                        myAngs=[-tmpT,tmpP],myAxes=[1,2], \
-                        lDegs=True,lDebug=lDebug)
-                    myP=myW.mulArr([0.0,0.0,tmpR],lDebug=lDebug)
-                    newGrid.AddLoc(myP=myP,myW=myW,myLab=myLab)
+                    myLoc=Location(myAngs=[-tmpT,tmpP],myAxes=[1,2],myLab=myLab)
+                    myLoc.ComputeRotMat(lDebug=lDebug)
+                    myW=myLoc.ret("MATRIX")
+                    myLoc.set("POINT",myW.mulArr([0.0,0.0,tmpR],lDebug=lDebug))
+                    newGrid.AddLoc(myLoc)
                     
         if (lDebug):
             print("Grid.SphericalShell(): RRs:",RRs)
@@ -170,8 +203,11 @@ class Grid:
 
 class Hive:
     '''
-    This class implements the coordinates of the hive for the grid.
-    The actual structure of the class depends on the type.
+    This class implements the coordinates of the hive for a grid;
+      this class is actually a parent class implementing general-purpose
+      methods and fields.
+    The actual structure of the class depends on the type - hence, the
+      actual hives are implemented as child classes.
     '''
     def __init__(self,hType=None):
         if (hType is not None):
@@ -189,7 +225,10 @@ class SphericalHive(Hive):
     All the input info refer to the respective spherical grid of objects.
       Please see the docstring of the Grid.SphericalShell() method.
     The number of interfaces in the hive along r, theta and phy
-      are NR+1, NT+1 and NP+1
+      are NR+1, NT+1 and NP+1.
+
+    The class is actually made of three arrays, which state radius and
+       angles of the cutting spheres/planes building up the hive.
     '''
 
     def __init__(self,Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=False):

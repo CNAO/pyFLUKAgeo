@@ -266,9 +266,13 @@ class RotDefi(GeoObject):
             print("...cannot dump a ROT-DEFI card without a name!")
             exit(1)
         if (myID<100):
-            myIDecho=self.axis*100+myID
+            myIDecho=myID
+            if (self.phi!=0.0 or self.theta!=0.0):
+                myIDecho=myIDecho+self.axis*100
         else:
-            myIDecho=self.axis+myID*1000
+            myIDecho=myID*1000
+            if (self.phi!=0.0 or self.theta!=0.0):
+                myIDecho=myIDecho+self.axis
         if (lFree):
             return GeoObject.echoComm(self)+ \
                 "ROT-DEFI  %10.1f % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E %-10s"\
@@ -870,7 +874,14 @@ class Geometry():
                     if (myTh!=0.0):
                         ROTDEFIlist.append(RotDefi(myAx=myAx,myTh=myTh))
             elif (myTheta is not None):
-                if (myTheta!=0.0):
+                if (type(myTheta) is list and type(myAxis) is list):
+                    if ( len(myTheta)!=len(myAxis) ):
+                        print("...inconsistent number of angles (%d) and axes (%d)!"\
+                              %(len(myTheta),len(myAxis)))
+                        exit(1)
+                    for myT,myAx in zip(myTheta,myAxis):
+                        self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lDebug=lDebug)
+                elif (myTheta!=0.0):
                     print("...applying rotation by %f degs around axis %d..."%\
                           (myTheta,myAxis))
                     for ii in range(len(self.bods)):
@@ -902,7 +913,6 @@ class Geometry():
                 #   of existing transformation
                 for myTras in self.tras:
                     myTras.AddRotDefis(reversed(ROTDEFIlist),iAdd=0)
-                    
         print("...done.")
 
     def rename(self,newName,lNotify=True):
@@ -1106,7 +1116,12 @@ class Geometry():
             # - clone prototype
             myGeo=deepcopy(myProtoGeos[myProtoList[iLoc]])
             # - move clone to requested location/orientation
-            myGeo.solidTrasform(dd=myLoc.ret("POINT"),myMat=myLoc.ret("MATRIX"),lDebug=lDebug)
+            #   NB: give priority to angles/axis wrt matrices, for higher
+            #       numerical accuracy in final .inp file
+            if (len(myLoc.ret("ANGLE"))>0):
+                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myTheta=myLoc.ret("ANGLE"),myAxis=myLoc.ret("AXIS"),lDebug=lDebug)
+            else:
+                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myMat=myLoc.ret("MATRIX"),lDebug=lDebug)
             # - flag the region(s) outside the prototypes or that should be sized
             #   by the hive cells
             myGeo.flagRegs(osRegNames,-1,myLoc.ret("POINT"))
