@@ -51,7 +51,7 @@ class GeoObject():
             
 class Body(GeoObject):
     '''
-    - supported bodies: all planes and spheres, nothing else for the time being;
+    - supported bodies: planes, spheres, and TRCs, nothing else for the time being;
     - body definition on ONE line only, and always starts at col 1;
     - support only for preceding comments, NO comments headed by "!" or after
       body definition;
@@ -70,16 +70,20 @@ class Body(GeoObject):
 
     def echo(self,numFmt=" % 15.8E"):
         '''take into account comment'''
+        myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
         if (self.bType=="PLA"):
-            return GeoObject.echoComm(self)+"PLA %8s"%(self.echoName())+\
-                numFmt*(len(self.V)+len(self.P))%( self.V[0], self.V[1], self.V[2], \
-                                                   self.P[0], self.P[1], self.P[2] )
+            myStr=myStr+numFmt*(len(self.V)+len(self.P))%( self.V[0], self.V[1], self.V[2], \
+                                                           self.P[0], self.P[1], self.P[2] )
         elif (self.bType=="SPH"):
-            return GeoObject.echoComm(self)+"SPH %8s"%(self.echoName())+\
-                numFmt*(len(self.P)+1)%( self.P[0], self.P[1], self.P[2], self.Rs[0] )
+            myStr=myStr+numFmt*(len(self.P)+1)%( self.P[0], self.P[1], self.P[2], self.Rs[0] )
+        elif (self.bType=="TRC"):
+            myStr=myStr+numFmt*(len(self.P)+len(self.V))%( self.P[0],  self.P[1],  self.P[2], \
+                                                           self.V[0],  self.V[1],  self.V[2] ) \
+                       +"\n%12s"%("")+numFmt*(len(self.Rs))%( self.Rs[0], self.Rs[1] )
         else:
             print("body %s NOT supported yet!"%(self.bType))
             exit(1)
+        return myStr
 
     @staticmethod
     def fromBuf(tmpLines):
@@ -111,6 +115,12 @@ class Body(GeoObject):
                 newBody.rename(data[1],lNotify=False)
                 newBody.P=np.array(data[2:5]).astype(float)
                 newBody.Rs[0]=data[5].astype(float)
+            elif (data[0]=="TRC"):
+                newBody.bType="TRC"
+                newBody.rename(data[1],lNotify=False)
+                newBody.P=np.array(data[2:5]).astype(float)
+                newBody.V=np.array(data[5:8]).astype(float)
+                newBody.Rs=np.array(data[8:]).astype(float)
             elif (tmpLine.startswith("*")):
                 newBody.tailMe(tmpLine)
             else:
@@ -120,8 +130,7 @@ class Body(GeoObject):
 
     def traslate(self,dd=None):
         if (dd is not None):
-            if (self.bType=="PLA" or self.bType=="SPH" ):
-                self.P=self.P+dd
+            self.P=self.P+dd
         else:
             print("please provide me with a 3D traslation array!")
             exit(1)
@@ -1014,8 +1023,16 @@ class Geometry():
         for ii,TT in enumerate(TTs,1):
             tmpBD=Body()
             tmpBD.rename("HVTHT%03i"%(ii),lNotify=False)
-            tmpBD.V=np.array([0.0,1.0,0.0])
-            tmpBD.rotate(myMat=None,myTheta=-TT,myAxis=1,lDegs=True,lDebug=lDebug)
+            if (TT==0.0):
+                tmpBD.V=np.array([0.0,1.0,0.0])
+            else:
+                tmpBD.bType="TRC"
+                hh=RRs[-1]+10
+                tmpBD.Rs[0]=hh*np.tan(np.radians(90-abs(TT)))
+                if (TT>0):
+                    hh=-hh # TT>0: angle towards y>0 --> TRC points downwards
+                tmpBD.V=np.array([0.0, hh,0.0])
+                tmpBD.P=np.array([0.0,-hh,0.0])
             tmpBD.comment="* Hive theta boundary at theta[deg]=%g"%(TT)
             thetas.append(tmpBD)
         thetas[0].comment="* \n"+thetas[0].comment
@@ -1050,14 +1067,18 @@ class Geometry():
         tmpReg=Region()
         tmpReg.rename("HVAROUND",lNotify=False)
         tmpReg.material=defMat
-        tmpReg.definition='''| +%-8s -%-8s -%-8s
-                | +%-8s -%-8s +%-8s +%-8s
-                | +%-8s -%-8s +%-8s -%-8s +%-8s
-                | +%-8s -%-8s +%-8s -%-8s -%-8s -%-8s'''%( \
-     spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), \
-     spheres[-1].echoName(),spheres[0].echoName(), thetas[ 0].echoName(), thetas[-1].echoName(), \
-     spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[ 0].echoName(), \
-     spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName(), phis[ 0].echoName()  )
+        tmpReg.definition='''| +%-8s -%-8s +%-8s
+                | +%-8s -%-8s +%-8s
+                | +%-8s -%-8s -%-8s -%-8s -%-8s +%-8s'''%( \
+                spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), \
+                spheres[-1].echoName(),spheres[0].echoName(), thetas[ 0].echoName(), \
+                spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName(), phis[ 0].echoName() )
+        if (PPs[-1]-PPs[0]<180.0):
+            tmpReg.definition=tmpReg.definition+'''
+                | +%-8s -%-8s -%-8s -%-8s -%-8s -%-8s
+                | +%-8s -%-8s -%-8s -%-8s +%-8s +%-8s'''%( \
+                spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName(), phis[ 0].echoName(), \
+                spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName(), phis[ 0].echoName() )
         tmpReg.comment="* region around hive"
         newGeom.add(tmpReg,what="reg")
         # - actual hive
@@ -1068,10 +1089,15 @@ class Geometry():
                     tmpReg=Region()
                     tmpReg.rename("HVCL%04i"%(iHive),lNotify=False)
                     tmpReg.material=defMat
-                    tmpReg.definition='+%-8s -%-8s +%-8s -%-8s +%-8s -%-8s'%\
-                        (spheres[iR].echoName(),spheres[iR-1].echoName(),\
-                         thetas [iT].echoName(),thetas [iT-1].echoName(),\
-                         phis   [iP].echoName(),phis   [iP-1].echoName())
+                    rDef='+%-8s -%-8s'%(spheres[iR].echoName(),spheres[iR-1].echoName())
+                    if (TTs[iT]<=0.0):
+                        tDef='+%-8s -%-8s'%(thetas [iT].echoName(),thetas [iT-1].echoName())
+                    elif (TTs[iT-1]==0.0 or (TTs[iT]>0.0 and TTs[iT-1]<0.0)):
+                        tDef='-%-8s -%-8s'%(thetas [iT].echoName(),thetas [iT-1].echoName())
+                    elif (TTs[iT-1]>0.0):
+                        tDef='-%-8s +%-8s'%(thetas [iT].echoName(),thetas [iT-1].echoName())
+                    pDef='+%-8s -%-8s'%(phis[iP].echoName(),phis[iP-1].echoName())
+                    tmpReg.definition='%s %s %s'%(rDef,tDef,pDef)
                     tmpComment=             "* - hive region %4d: R[cm]=[%g:%g], theta[deg]=[%g:%g], phi[deg]=[%g:%g]"%(
                         iHive,RRs[iR-1],RRs[iR],TTs[iT-1],TTs[iT],PPs[iP-1],PPs[iP])
                     myCenter=cellGrid.ret(what="POINT",iEl=iHive)
@@ -1295,24 +1321,25 @@ if (__name__=="__main__"):
     R=100
     dR=50
     NR=1
-    Tmax=1.0  # theta [degs] --> range: -Tmax:Tmax
-    NT=1      # number of steps (i.e. grid cells)
-    Pmax=90   # phi [degs] --> range: -Pmax:Pmax
-    NP=19     # number of steps (i.e. grid cells)
+    Tmax=60.0 # theta [degs] --> range: -Tmax:Tmax
+    NT= 7     # number of steps (i.e. grid cells)
+    Pmin=-180
+    Pmax=170   # phi [degs] --> range: -Pmax:Pmax
+    NP=36     # number of steps (i.e. grid cells)
     # Tmax=3.0  # theta [degs] --> range: -Tmax:Tmax
     # NT=4      # number of steps (i.e. grid cells)
     # Pmax=2.0  # phi [degs] --> range: -Pmax:Pmax
     # NP=3      # number of steps (i.e. grid cells)
 
     # - hive geometry
-    HiveGeo=Geometry.DefineHive_SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
+    HiveGeo=Geometry.DefineHive_SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
     # HiveGeo.echo("hive.inp")
 
     # - gridded crystals
     #   acquire geometries
     fileNames=[ "caloCrys_01.inp" ] ; geoNames=fileNames
     myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames);
-    cellGrid=grid.Grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
+    cellGrid=grid.Grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
     myProtoList=[ "caloCrys_01.inp" for ii in range(len(cellGrid)) ]
     GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lDebug=lDebug)
     # GridGeo.echo("grid.inp")
