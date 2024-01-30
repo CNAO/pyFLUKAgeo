@@ -133,48 +133,30 @@ class Grid:
         The grid is described in spherical coordinates:
         - r [cm];
         - theta [degs]: angle in yz-plane (positive when pointing towards y>0);
+                        range: [-90:90] degs;
         - phi [degs]: angle in xz-plane (positive when pointing towards x>0).
+                        range: [-180:180] degs;
         The grid starts around the z-axis.
 
         NR, NT, NP are number of points along grid (cell centers);
           therefore, the number of steps are NR-1, NT-1, NP-1;
         '''
         # some checks
-        if (Rmin>Rmax):
-            Rmin, Rmax = Rmax, Rmin
-            if (lDebug):
-                print("Grid.SphericalShell(): Rmin,Rmax sorted in increasing order;")
-        if (Tmin>Tmax):
-            Tmin, Tmax = Tmax, Tmin
-            if (lDebug):
-                print("Grid.SphericalShell(): Tmin,Tmax sorted in increasing order;")
-        if (Pmin>Pmax):
-            Pmin, Pmax = Pmax, Pmin
-            if (lDebug):
-                print("Grid.SphericalShell(): Pmin,Pmax sorted in increasing order;")
-        if (Rmin<=0):
-            print("Grid.SphericalShell(): Rmin<=0!")
-            exit(1)
-        if (NR<0):
-            print("Grid.SphericalShell(): NR<0! - setting to NR=0")
-            NR=0
-        if (NT<0):
-            print("Grid.SphericalShell(): NT<0! - setting to NT=0")
-            NT=0
-        elif (NT==1):
-            Tmean=(Tmax+Tmin)/2.
-            Tmin, Tmax = Tmean, Tmean
-        if (NP<0):
-            print("Grid.SphericalShell(): NP<0! - setting to NP=0")
-            NP=0
-        elif (NP==1):
-            Pmean=(Pmax+Pmin)/2.
-            Pmin, Pmax = Pmean, Pmean
+        oRmin,oRmax,oNR,oTmin,oTmax,oNT,oPmin,oPmax,oNP=\
+            CheckSphericalRange(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP)
+        
+        # define mesh ranges
+        if (oNT==1):
+            oTmean=(oTmax+oTmin)/2.
+            oTmin, oTmax = oTmean, oTmean
+        if (oNP==1):
+            oPmean=(oPmax+oPmin)/2.
+            oPmin, oPmax = oPmean, oPmean
         # define unique shell values of radius and angles
-        # NB: np.linspace: num is number of points
-        RRs=np.linspace(Rmin,Rmax,num=NR)
-        TTs=np.linspace(Tmin,Tmax,num=NT)
-        PPs=np.linspace(Pmin,Pmax,num=NP)
+        # NB: np.linspace: num is number of points, extremes are included
+        RRs=np.linspace(oRmin,oRmax,num=oNR)
+        TTs=np.linspace(oTmin,oTmax,num=oNT)
+        PPs=np.linspace(oPmin,oPmax,num=oNP)
         
         # create set of locations (coordinates and orientations)
         newGrid=Grid()
@@ -238,61 +220,42 @@ class SphericalHive(Hive):
 
     def __init__(self,Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=False):
         # some checks
-        if (Rmin>Rmax):
-            Rmin, Rmax = Rmax, Rmin
-            if (lDebug):
-                print("Grid.SphericalShell(): Rmin,Rmax sorted in increasing order;")
-        if (Tmin>Tmax):
-            Tmin, Tmax = Tmax, Tmin
-            if (lDebug):
-                print("Grid.SphericalShell(): Tmin,Tmax sorted in increasing order;")
-        if (Pmin>Pmax):
-            Pmin, Pmax = Pmax, Pmin
-            if (lDebug):
-                print("Grid.SphericalShell(): Pmin,Pmax sorted in increasing order;")
-        if (Rmin<=0):
-            print("Grid.SphericalShell(): Rmin<=0!")
-            exit(1)
-            
+        oRmin,oRmax,oNR,oTmin,oTmax,oNT,oPmin,oPmax,oNP=\
+            CheckSphericalRange(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP)
+        
         # define mesh ranges
         Hive.__init__(self,"SPHERE")
-        hdR=(Rmax-Rmin)
-        if (NR<=0):
-            hRmax=Rmax; hRmin=Rmin; NR=-1
-        elif (NR==1):
-            hRmax=Rmax-hdR/2.; hRmin=Rmin-hdR/2.
+        hdR=(oRmax-oRmin)
+        if (NR==1):
+            hRmax=oRmax-hdR/2.; hRmin=oRmin-hdR/2.
         else:
-            hdR=hdR/(NR-1)
-            hRmax=Rmax+hdR/2.; hRmin=Rmin-hdR/2.
-        hdT=(Tmax-Tmin)
-        if (NT<=0):
-            hTmax=Tmax; hTmin=Tmin; NT=-1
-        elif (NT==1):
-            tMean=(Tmax+Tmin)/2.
+            hdR=hdR/(oNR-1)
+            hRmax=oRmax+hdR/2.; hRmin=oRmin-hdR/2.
+        hdT=(oTmax-oTmin)
+        if (NT==1):
+            tMean=(oTmax+oTmin)/2.
             hTmax=tMean+hdT/2.; hTmin=tMean-hdT/2.
         else:
-            hdT=hdT/(NT-1)
-            hTmax=Tmax+hdT/2.; hTmin=Tmin-hdT/2.
-        hdP=(Pmax-Pmin)
-        if (NP<=0):
-            hPmax=Pmax; hPmin=Pmin; NP=-1
-        elif (NP==1):
-            pMean=(Pmax+Pmin)/2.
+            hdT=hdT/(oNT-1)
+            hTmax=oTmax+hdT/2.; hTmin=oTmin-hdT/2.
+        hdP=(oPmax-oPmin)
+        if (oNP==1):
+            pMean=(oPmax+oPmin)/2.
             hPmax=pMean+hdP/2.; hPmin=pMean-hdP/2.
         else:
-            hdP=hdP/(NP-1)
-            hPmax=Pmax+hdP/2.; hPmin=Pmin-hdP/2.
+            hdP=hdP/(oNP-1)
+            hPmax=oPmax+hdP/2.; hPmin=oPmin-hdP/2.
             
         # define unique shell values of radius and angles
-        # NB: np.linspace: num is number of points
+        # NB: np.linspace: num is number of points, extremes are included
         self.RRs=np.linspace(hRmin,hRmax,num=NR+1)
         self.TTs=np.linspace(hTmin,hTmax,num=NT+1)
         self.PPs=np.linspace(hPmin,hPmax,num=NP+1)
 
         if (lDebug):
-            print("SphericalHive(): R[cm]=[%g:%g:%g] - N=%d;"%(hRmin,hdR,hRmax,NR+1))
-            print("SphericalHive(): theta[deg]=[%g:%g:%g] - N=%d;"%(hTmin,hdT,hTmax,NT+1))
-            print("SphericalHive(): phi[deg]=[%g:%g:%g] - N=%d;"%(hPmin,hdP,hPmax,NP+1))
+            print("SphericalHive(): R[cm]=[%g:%g:%g] - N=%d;"%(hRmin,hdR,hRmax,oNR+1))
+            print("SphericalHive(): theta[deg]=[%g:%g:%g] - N=%d;"%(hTmin,hdT,hTmax,oNT+1))
+            print("SphericalHive(): phi[deg]=[%g:%g:%g] - N=%d;"%(hPmin,hdP,hPmax,oNP+1))
             print("")
             print("SphericalHive(): RRs:",self.ret("RRs"))
             print("SphericalHive(): TTs:",self.ret("TTs"))
@@ -320,6 +283,41 @@ class SphericalHive(Hive):
                    self.ret(what="PPs")
         else:
             print("SphericalHive.ret(): what to return? %s"%(what))
+
+def CheckSphericalRange(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP):
+    oRmin,oRmax,oNR,oTmin,oTmax,oNT,oPmin,oPmax,oNP = \
+        Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP
+    if (oRmin>oRmax):
+        oRmin, oRmax = oRmax, oRmin
+        if (lDebug):
+            print("grid.CheckSphericalRange(): Rmin,Rmax sorted in increasing order;")
+    if (oTmin>oTmax):
+        oTmin, oTmax = oTmax, oTmin
+        if (lDebug):
+            print("grid.CheckSphericalRange(): Tmin,Tmax sorted in increasing order;")
+    if (oPmin>oPmax):
+        oPmin, oPmax = oPmax, oPmin
+        if (lDebug):
+            print("grid.CheckSphericalRange(): Pmin,Pmax sorted in increasing order;")
+    if (oRmin<=0):
+        print("grid.CheckSphericalRange(): Rmin<=0!")
+        exit(1)
+    if ( oTmin<-90 or oTmax>90 ):
+        print("grid.CheckSphericalRange(): allowed range for theta: [-90:90] - given: [%g:%g]!"%(oTmin,oTmax))
+        exit(1)
+    if ( oPmin<-180 or oPmax>180 ):
+        print("grid.CheckSphericalRange(): allowed range for phi: [-180:180] - given: [%g:%g]!"%(oPmin,oPmax))
+        exit(1)
+    if (oNR<=0):
+        print("grid.CheckSphericalRange(): NR<=0!")
+        exit(1)
+    if (oNT<0):
+        print("grid.CheckSphericalRange(): NT<=0!")
+        exit(1)
+    if (oNP<0):
+        print("grid.CheckSphericalRange(): NP<=0!")
+        exit(1)
+    return oRmin,oRmax,oNR,oTmin,oTmax,oNT,oPmin,oPmax,oNP
 
 if ( __name__ == "__main__" ):
     # perform some tests
