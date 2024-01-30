@@ -1005,6 +1005,8 @@ class Geometry():
         print("...defining hive boundaries...")
         myHive=grid.SphericalHive(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
         RRs,TTs,PPs=myHive.ret(what="all")
+        lPhi2pi=(PPs[-1]-PPs[0])==360.0
+        lTht_pi=(TTs[-1]-TTs[0])==180.0
 
         print("...generating FLUKA geometry...")
         newGeom=Geometry()
@@ -1038,6 +1040,10 @@ class Geometry():
         thetas[0].comment="* \n"+thetas[0].comment
         phis=[]
         for ii,PP in enumerate(PPs,1):
+            if lPhi2pi:
+                if (ii==len(PPs)):
+                    # re-use first plane
+                    break
             tmpBD=Body()
             tmpBD.rename("HVPHI%03i"%(ii),lNotify=False)
             tmpBD.V=np.array([1.0,0.0,0.0])
@@ -1068,10 +1074,12 @@ class Geometry():
         tmpReg.rename("HVAROUND",lNotify=False)
         tmpReg.material=defMat
         tmpReg.definition='''| +%-8s -%-8s +%-8s
-                | +%-8s -%-8s +%-8s
-                | +%-8s -%-8s -%-8s -%-8s -%-8s +%-8s'''%( \
+                | +%-8s -%-8s +%-8s'''%( \
                 spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), \
-                spheres[-1].echoName(),spheres[0].echoName(), thetas[ 0].echoName(), \
+                spheres[-1].echoName(),spheres[0].echoName(), thetas[ 0].echoName()  )
+        if ( not lPhi2pi ):
+            tmpReg.definition=tmpReg.definition+'''
+                | +%-8s -%-8s -%-8s -%-8s -%-8s +%-8s'''%( \
                 spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName(), phis[ 0].echoName() )
         if (PPs[-1]-PPs[0]<180.0):
             tmpReg.definition=tmpReg.definition+'''
@@ -1083,9 +1091,13 @@ class Geometry():
         newGeom.add(tmpReg,what="reg")
         # - actual hive
         iHive=0
+        iPs=[ iP for iP in range(1,len(phis)) ]
+        if lPhi2pi:
+            # re-use first plane
+            iPs=iPs+[0]
         for iR in range(1,len(spheres)):
             for iT in range(1,len(thetas)):
-                for iP in range(1,len(phis)):
+                for iP in iPs:
                     tmpReg=Region()
                     tmpReg.rename("HVCL%04i"%(iHive),lNotify=False)
                     tmpReg.material=defMat
