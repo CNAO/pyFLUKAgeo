@@ -199,14 +199,25 @@ class Region(GeoObject):
         return newReg
         
     def BodyNameReplaceInDef(self,oldNames,newNames):
-        '''
-        simple method to query-replace body names in region definition
-        '''
+        'query-replace body names in region definition'
         for oName,nName in zip(oldNames,newNames):
             self.definition=self.definition.replace(oName,nName)
 
     def assignMat(self,myMaterial):
         self.material=myMaterial
+
+    def addZone(self,myDef,nSpace=16):
+        if (self.isNonEmpty()):
+            if ( '|' not in self.definition ):
+                # if more than a zone, be sure that the first zone has the "|" preceeding char,
+                #    just for the sake of proper alignment
+                self.definition="| %s"%(self.definition)
+            self.definition=self.definition+'\n'+" "*nSpace+'| %s'%(myDef)
+        else:
+            self.definition=myDef
+
+    def isNonEmpty(self):
+        return len(self.definition)>0
         
     def echo(self,lMat=False):
         '''take into account comment'''
@@ -994,24 +1005,23 @@ class Geometry():
 
         The hive is delimited:
         - radially, by spheres;
-        - on theta, by rotated XZPs;
-        - on phi, by rotated YZPs;
+        - on theta, by TRCs (i.e. identifying circles of latitude on the spherical shell);
+        - on phi, by rotated YZPs (i.e. identifying meridians on the spherical shell);
         '''
         
         print("Preparing the hive for a spherical shell...")
         
         print("...generating the grid of cells...")
-        cellGrid=grid.Grid.SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
+        cellGrid=grid.SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
         print("...defining hive boundaries...")
         myHive=grid.SphericalHive(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
         RRs,TTs,PPs=myHive.ret(what="all")
-        lPhi2pi=(PPs[-1]-PPs[0])==360.0
-        lTht_pi=(TTs[-1]-TTs[0])==180.0
 
         print("...generating FLUKA geometry...")
         newGeom=Geometry()
         
         print("   ...bodies...")
+        # - concentric spherical shells
         spheres=[]
         for ii,RR in enumerate(RRs,1):
             tmpBD=Body()
@@ -1021,6 +1031,7 @@ class Geometry():
             tmpBD.comment="* Hive radial boundary at R[cm]=%g"%(RR)
             spheres.append(tmpBD)
         spheres[0].comment="* \n"+spheres[0].comment
+        # - circles of latitude on the spherical shell
         thetas=[]
         for ii,TT in enumerate(TTs,1):
             tmpBD=Body()
@@ -1030,7 +1041,13 @@ class Geometry():
             else:
                 tmpBD.bType="TRC"
                 hh=RRs[-1]+10
-                tmpBD.Rs[0]=hh*np.tan(np.radians(90-abs(TT)))
+                if ( myHive.SphericalHive_ThetaCoversPi() and ( ii==1 or ii==len(TTs) ) ):
+                    # extremely small angle, almost 90degs,
+                    #  almost negligible, but necessary for a more
+                    #  robust geometry
+                    tmpBD.Rs[0]=hh*1E-4
+                else:
+                    tmpBD.Rs[0]=hh*np.tan(np.radians(90-abs(TT)))
                 if (TT>0):
                     hh=-hh # TT>0: angle towards y>0 --> TRC points downwards
                 tmpBD.V=np.array([0.0, hh,0.0])
@@ -1038,12 +1055,9 @@ class Geometry():
             tmpBD.comment="* Hive theta boundary at theta[deg]=%g"%(TT)
             thetas.append(tmpBD)
         thetas[0].comment="* \n"+thetas[0].comment
+        # - meridians on the spherical shell
         phis=[]
         for ii,PP in enumerate(PPs,1):
-            if lPhi2pi:
-                if (ii==len(PPs)):
-                    # re-use first plane
-                    break
             tmpBD=Body()
             tmpBD.rename("HVPHI%03i"%(ii),lNotify=False)
             tmpBD.V=np.array([1.0,0.0,0.0])
@@ -1058,7 +1072,7 @@ class Geometry():
         tmpReg=Region()
         tmpReg.rename("HV_OUTER",lNotify=False)
         tmpReg.material=defMat
-        tmpReg.definition='''-%-8s'''%(spheres[-1].name)
+        tmpReg.addZone('-%-8s'%(spheres[-1].name))
         tmpReg.comment="* region outside hive"
         tmpReg.initCont(rCont=-1)
         newGeom.add(tmpReg,what="reg")
@@ -1066,36 +1080,49 @@ class Geometry():
         tmpReg=Region()
         tmpReg.rename("HV_INNER",lNotify=False)
         tmpReg.material=defMat
-        tmpReg.definition='''+%-8s'''%(spheres[0].name)
+        tmpReg.addZone('+%-8s'%(spheres[0].name))
         tmpReg.comment="* region inside hive"
         newGeom.add(tmpReg,what="reg")
         # - around hive
         tmpReg=Region()
         tmpReg.rename("HVAROUND",lNotify=False)
         tmpReg.material=defMat
-        tmpReg.definition='''| +%-8s -%-8s +%-8s
-                | +%-8s -%-8s +%-8s'''%( \
-                spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), \
-                spheres[-1].echoName(),spheres[0].echoName(), thetas[ 0].echoName()  )
-        if ( not lPhi2pi ):
-            tmpReg.definition=tmpReg.definition+'''
-                | +%-8s -%-8s -%-8s -%-8s -%-8s +%-8s'''%( \
-                spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName(), phis[ 0].echoName() )
+        if (not cellGrid.HasPole("N")):
+            tmpReg.addZone('+%-8s -%-8s +%-8s'%( \
+                spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName() ))
+        if (not cellGrid.HasPole("S")):
+            tmpReg.addZone('+%-8s -%-8s +%-8s'%( \
+                spheres[-1].echoName(),spheres[0].echoName(), thetas[ 0].echoName() ))
+        if (not myHive.SphericalHive_PhiCovers2pi()):
+            tmpReg.addZone('+%-8s -%-8s -%-8s -%-8s -%-8s +%-8s'%( \
+                spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName(), phis[ 0].echoName() ))
         if (PPs[-1]-PPs[0]<180.0):
-            tmpReg.definition=tmpReg.definition+'''
-                | +%-8s -%-8s -%-8s -%-8s -%-8s -%-8s
-                | +%-8s -%-8s -%-8s -%-8s +%-8s +%-8s'''%( \
-                spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName(), phis[ 0].echoName(), \
-                spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName(), phis[ 0].echoName() )
-        tmpReg.comment="* region around hive"
-        newGeom.add(tmpReg,what="reg")
+            tmpReg.addZone('+%-8s -%-8s -%-8s -%-8s -%-8s -%-8s'%( \
+                spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName(), phis[ 0].echoName() ))
+            tmpReg.addZone('+%-8s -%-8s -%-8s -%-8s +%-8s +%-8s'%( \
+                spheres[-1].echoName(),spheres[0].echoName(), thetas[-1].echoName(), thetas[ 0].echoName(), phis[-1].echoName(), phis[ 0].echoName() ))
+        if (tmpReg.isNonEmpty()):
+            tmpReg.comment="* region around hive"
+            newGeom.add(tmpReg,what="reg")
         # - actual hive
-        iHive=0
         iPs=[ iP for iP in range(1,len(phis)) ]
-        if lPhi2pi:
+        if myHive.SphericalHive_PhiCovers2pi():
             # re-use first plane
             iPs=iPs+[0]
+        iHive=0
         for iR in range(1,len(spheres)):
+            if (cellGrid.HasPole("S")):
+                tmpReg=Region()
+                tmpReg.rename("HVCL%04i"%(iHive),lNotify=False)
+                tmpReg.material=defMat
+                tmpReg.addZone('+%-8s -%-8s +%-8s'%(spheres[iR].echoName(),spheres[iR-1].echoName(),thetas[0].echoName()))
+                myCenter=cellGrid.ret(what="POINT",iEl=iHive)
+                tmpReg.tailMe("* - hive region %4d: SOUTH POLE! R[cm]=[%g:%g], theta[deg]=[-90:%g]"%(
+                    iHive,RRs[iR-1],RRs[iR],TTs[0]))
+                tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
+                tmpReg.initCont(rCont=1,rCent=myCenter)
+                newGeom.add(tmpReg,what="reg")
+                iHive=iHive+1
             for iT in range(1,len(thetas)):
                 for iP in iPs:
                     tmpReg=Region()
@@ -1109,15 +1136,26 @@ class Geometry():
                     elif (TTs[iT-1]>0.0):
                         tDef='-%-8s +%-8s'%(thetas [iT].echoName(),thetas [iT-1].echoName())
                     pDef='+%-8s -%-8s'%(phis[iP].echoName(),phis[iP-1].echoName())
-                    tmpReg.definition='%s %s %s'%(rDef,tDef,pDef)
-                    tmpComment=             "* - hive region %4d: R[cm]=[%g:%g], theta[deg]=[%g:%g], phi[deg]=[%g:%g]"%(
-                        iHive,RRs[iR-1],RRs[iR],TTs[iT-1],TTs[iT],PPs[iP-1],PPs[iP])
+                    tmpReg.addZone('%s %s %s'%(rDef,tDef,pDef))
                     myCenter=cellGrid.ret(what="POINT",iEl=iHive)
-                    tmpComment=tmpComment+"\n*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2])
-                    tmpReg.comment=tmpComment
+                    tmpReg.tailMe("* - hive region %4d: R[cm]=[%g:%g], theta[deg]=[%g:%g], phi[deg]=[%g:%g]"%(
+                        iHive,RRs[iR-1],RRs[iR],TTs[iT-1],TTs[iT],PPs[iP-1],PPs[iP]))
+                    tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
                     tmpReg.initCont(rCont=1,rCent=myCenter)
                     newGeom.add(tmpReg,what="reg")
                     iHive=iHive+1
+            if (cellGrid.HasPole("N")):
+                tmpReg=Region()
+                tmpReg.rename("HVCL%04i"%(iHive),lNotify=False)
+                tmpReg.material=defMat
+                tmpReg.addZone('+%-8s -%-8s +%-8s'%(spheres[iR].echoName(),spheres[iR-1].echoName(),thetas[-1].echoName()))
+                myCenter=cellGrid.ret(what="POINT",iEl=iHive)
+                tmpReg.tailMe("* - hive region %4d: NORTH POLE! R[cm]=[%g:%g], theta[deg]=[%g:90]"%(
+                    iHive,RRs[iR-1],RRs[iR],TTs[-1]))
+                tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
+                tmpReg.initCont(rCont=1,rCent=myCenter)
+                newGeom.add(tmpReg,what="reg")
+                iHive=iHive+1
 
         newGeom.headMe(tmpTitle)
         newGeom.setTitle(tmpTitle=tmpTitle)
@@ -1147,7 +1185,7 @@ class Geometry():
         # loop over locations, to clone prototypes
         for iLoc,myLoc in enumerate(myGrid):
             if (myProtoList[iLoc] not in myProtoGeos):
-                print("Geometry.BuildGriddedGeo_SphericalShell(): unknown prototype %s!"%(\
+                print("Geometry.BuildGriddedGeo(): unknown prototype %s!"%(\
                         myProtoList[iLoc]))
                 exit(1)
             # - clone prototype
@@ -1330,28 +1368,29 @@ if (__name__=="__main__"):
     # caloCrysGeo.echo("pippo.inp")
     
     # - test generation of geometry
-    R=100
+    R=75
     dR=50
-    NR=1
-    Tmax=60.0 # theta [degs] --> range: -Tmax:Tmax
-    NT= 7     # number of steps (i.e. grid cells)
+    NR=2
+    Tmin=-90.0 # theta [degs] --> range: -Tmax:Tmax
+    Tmax=90.0  # theta [degs] --> range: -Tmax:Tmax
+    NT=19      # number of steps (i.e. grid cells)
     Pmin=-180
-    Pmax=170   # phi [degs] --> range: -Pmax:Pmax
-    NP=36     # number of steps (i.e. grid cells)
+    Pmax=160   # phi [degs] --> range: -Pmax:Pmax
+    NP=18      # number of steps (i.e. grid cells)
     # Tmax=3.0  # theta [degs] --> range: -Tmax:Tmax
     # NT=4      # number of steps (i.e. grid cells)
     # Pmax=2.0  # phi [degs] --> range: -Pmax:Pmax
     # NP=3      # number of steps (i.e. grid cells)
 
     # - hive geometry
-    HiveGeo=Geometry.DefineHive_SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
+    HiveGeo=Geometry.DefineHive_SphericalShell(R,R+dR,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
     # HiveGeo.echo("hive.inp")
 
     # - gridded crystals
     #   acquire geometries
     fileNames=[ "caloCrys_01.inp" ] ; geoNames=fileNames
     myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames);
-    cellGrid=grid.Grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
+    cellGrid=grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
     myProtoList=[ "caloCrys_01.inp" for ii in range(len(cellGrid)) ]
     GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lDebug=lDebug)
     # GridGeo.echo("grid.inp")

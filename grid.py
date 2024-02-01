@@ -92,8 +92,14 @@ class Grid:
        system) to the actual position/orientation.
     The class is basically a list of locations.
     '''
-    def __init__(self):
+    def __init__(self,sType=None):
         self.locs=[] # list of Locations
+        if (sType is not None):
+            if (sType.upper()!="SPHERE"):
+                print("Grid.__init__(): cannot create a hive of type %s!"%(\
+                    hType))
+                exit(1)
+        self.sType=sType
 
     def __len__(self):
         return len(self.locs)
@@ -124,18 +130,20 @@ class Grid:
     def ret(self,what="point",iEl=-1):
         return self.locs[iEl].ret(what=what)
 
-    @staticmethod
-    def SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,\
-                       lDebug=False):
+class SphericalShell(Grid):
+
+    def __init__(self,Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=False):
         '''
         This method defines a grid describing a spherical shell.
 
         The grid is described in spherical coordinates:
         - r [cm];
         - theta [degs]: angle in yz-plane (positive when pointing towards y>0);
-                        range: [-90:90] degs;
-        - phi [degs]: angle in xz-plane (positive when pointing towards x>0).
-                        range: [-180:180] degs;
+                          range: [-90:90] degs;
+                        similar to circles of latitude on the spherical shell;
+        - phi   [degs]: angle in xz-plane (positive when pointing towards x>0).
+                          range: [-180:180] degs;
+                        similar to meridians on the spherical shell;
         The grid starts around the z-axis.
 
         NR, NT, NP are number of points along grid (cell centers);
@@ -144,8 +152,13 @@ class Grid:
         # some checks
         oRmin,oRmax,oNR,oTmin,oTmax,oNT,oPmin,oPmax,oNP=\
             CheckSphericalRange(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP)
+
+        Grid.__init__(self,"SPHERE")
         
         # define mesh ranges
+        if (oNR==1):
+            oRmean=(oRmax+oRmin)/2.
+            oRmin, oRmax = oRmean, oRmean
         if (oNT==1):
             oTmean=(oTmax+oTmin)/2.
             oTmin, oTmax = oTmean, oTmean
@@ -157,26 +170,37 @@ class Grid:
         RRs=np.linspace(oRmin,oRmax,num=oNR)
         TTs=np.linspace(oTmin,oTmax,num=oNT)
         PPs=np.linspace(oPmin,oPmax,num=oNP)
+        self.HasPoles=[ TTs[0]==-90.0, TTs[-1]==90.0 ]
         
         # create set of locations (coordinates and orientations)
-        newGrid=Grid()
         for tmpR in RRs:
-            for tmpT in TTs:
-                for tmpP in PPs:
+            for iT,tmpT in enumerate(TTs):
+                loopPPs=PPs
+                if ((iT==0 and self.HasPole("S")) or (iT==len(TTs)-1 and self.HasPole("N"))):
+                    # in case of poles, consider only one grid point
+                    loopPPs=[PPs[0]]
+                for tmpP in loopPPs:
                     myLab="R[cm]=%g,theta[deg]=%g,phi[deg]=%g"%(tmpR,tmpT,tmpP)
                     myLoc=Location(myAngs=[-tmpT,tmpP],myAxes=[1,2],myLab=myLab)
                     myLoc.ComputeRotMat(lDebug=lDebug)
                     myW=myLoc.ret("MATRIX")
                     myLoc.set("POINT",myW.mulArr([0.0,0.0,tmpR],lDebug=lDebug))
-                    newGrid.AddLoc(myLoc)
+                    self.AddLoc(myLoc)
                     
         if (lDebug):
-            print("Grid.SphericalShell(): RRs:",RRs)
-            print("Grid.SphericalShell(): TTs:",TTs)
-            print("Grid.SphericalShell(): PPs:",PPs)
-            print(newGrid.echo())
-            
-        return newGrid
+            print("SphericalShell.__init__(): RRs:",RRs)
+            print("SphericalShell.__init__(): TTs:",TTs)
+            print("SphericalShell.__init__(): PPs:",PPs)
+            print(self.echo())
+
+    def HasPole(self,whichPole):
+        if (whichPole.upper().startswith("N")):
+            return self.HasPoles[1]
+        elif (whichPole.upper().startswith("S")):
+            return self.HasPoles[0]
+        else:
+            print("SphericalShell.HasPole(): Which pole? requested %s!"%(whichPole))
+            exit(1)
     
     @staticmethod
     def SphericalShell_OneLayer(R,Tmax,NT,Pmax,NP,lDebug=False):
@@ -185,8 +209,8 @@ class Grid:
         - only 1 radial layer;
         - symmetric angular ranges;
         '''
-        return Grid.SphericalShell(R,R,1,-Tmax,Tmax,NT,-Pmax,Pmax,NP,\
-                                   lDebug=lDebug)
+        return SphericalShell(R,R,1,-Tmax,Tmax,NT,-Pmax,Pmax,NP,\
+                              lDebug=lDebug)
 
 class Hive:
     '''
@@ -210,7 +234,7 @@ class SphericalHive(Hive):
       for which a sphere is a special case.
 
     All the input info refer to the respective spherical grid of objects.
-      Please see the docstring of the Grid.SphericalShell() method.
+      Please see the docstring of the SphericalShell() class.
     The number of interfaces in the hive along r, theta and phy
       are NR+1, NT+1 and NP+1.
 
@@ -219,47 +243,71 @@ class SphericalHive(Hive):
     '''
 
     def __init__(self,Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=False):
+        Hive.__init__(self,"SPHERE")
+        self.PhiCovers2pi=False
+        self.ThetaCoversPi=False
+        
         # some checks
         oRmin,oRmax,oNR,oTmin,oTmax,oNT,oPmin,oPmax,oNP=\
             CheckSphericalRange(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP)
         
         # define mesh ranges
-        Hive.__init__(self,"SPHERE")
         hdR=(oRmax-oRmin)
-        if (NR==1):
-            hRmax=oRmax-hdR/2.; hRmin=oRmin-hdR/2.
-        else:
+        hRmax=oRmax; hRmin=oRmin
+        if (NR>1):
             hdR=hdR/(oNR-1)
-            hRmax=oRmax+hdR/2.; hRmin=oRmin-hdR/2.
+            hRmax=hRmax+hdR/2.; hRmin=hRmin-hdR/2.
         hdT=(oTmax-oTmin)
         if (NT==1):
             tMean=(oTmax+oTmin)/2.
             hTmax=tMean+hdT/2.; hTmin=tMean-hdT/2.
         else:
             hdT=hdT/(oNT-1)
-            hTmax=oTmax+hdT/2.; hTmin=oTmin-hdT/2.
+            if (oTmax==90.0):
+                # north pole in grid!
+                hTmax=oTmax-hdT/2.
+                oNT=oNT-1
+            else:
+                hTmax=oTmax+hdT/2.
+            if (oTmin==-90.0):
+                # south pole in grid!
+                hTmin=oTmin+hdT/2.
+                oNT=oNT-1
+            else:
+                hTmin=oTmin-hdT/2.
         hdP=(oPmax-oPmin)
         if (oNP==1):
             pMean=(oPmax+oPmin)/2.
-            hPmax=pMean+hdP/2.; hPmin=pMean-hdP/2.
+            hPmin=pMean-hdP/2.
+            hPmax=pMean+hdP/2.
         else:
             hdP=hdP/(oNP-1)
-            hPmax=oPmax+hdP/2.; hPmin=oPmin-hdP/2.
-            
+            hPmin=oPmin-hdP/2.
+            hPmax=oPmax+hdP/2.
+        if (hPmax-hPmin==360.0):
+            self.PhiCovers2pi=True
+            hPmax=hPmax-hdP
+            oNP=oNP-1
+        elif (hPmax-hPmin>360.0):
+            print("SphericalHive.__init__(): The hive in phi should cover more than 360! (requested: %g)"%(hPmax-hPmin))
+            exit(1)
+                
         # define unique shell values of radius and angles
         # NB: np.linspace: num is number of points, extremes are included
-        self.RRs=np.linspace(hRmin,hRmax,num=NR+1)
-        self.TTs=np.linspace(hTmin,hTmax,num=NT+1)
-        self.PPs=np.linspace(hPmin,hPmax,num=NP+1)
+        self.RRs=np.linspace(hRmin,hRmax,num=oNR+1)
+        self.TTs=np.linspace(hTmin,hTmax,num=oNT+1)
+        self.PPs=np.linspace(hPmin,hPmax,num=oNP+1)
+
+        self.ThetaCoversPi=(self.TTs[-1]-self.TTs[0])==180.0
 
         if (lDebug):
-            print("SphericalHive(): R[cm]=[%g:%g:%g] - N=%d;"%(hRmin,hdR,hRmax,oNR+1))
-            print("SphericalHive(): theta[deg]=[%g:%g:%g] - N=%d;"%(hTmin,hdT,hTmax,oNT+1))
-            print("SphericalHive(): phi[deg]=[%g:%g:%g] - N=%d;"%(hPmin,hdP,hPmax,oNP+1))
+            print("SphericalHive.__init__(): R[cm]=[%g:%g:%g] - N=%d;"%(hRmin,hdR,hRmax,oNR+1))
+            print("SphericalHive.__init__(): theta[deg]=[%g:%g:%g] - N=%d;"%(hTmin,hdT,hTmax,oNT+1))
+            print("SphericalHive.__init__(): phi[deg]=[%g:%g:%g] - N=%d;"%(hPmin,hdP,hPmax,oNP+1))
             print("")
-            print("SphericalHive(): RRs:",self.ret("RRs"))
-            print("SphericalHive(): TTs:",self.ret("TTs"))
-            print("SphericalHive(): PPs:",self.ret("PPs"))
+            print("SphericalHive.__init__(): RRs:",self.ret("RRs"))
+            print("SphericalHive.__init__(): TTs:",self.ret("TTs"))
+            print("SphericalHive.__init__(): PPs:",self.ret("PPs"))
             
     @staticmethod
     def SphericalHive_OneLayer(R,dR,Tmax,NT,Pmax,NP,lDebug=False):
@@ -269,6 +317,12 @@ class SphericalHive(Hive):
         - symmetric angular ranges;
         '''
         return SphericalHive(R,R+dR,1,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
+
+    def SphericalHive_PhiCovers2pi(self):
+        return self.PhiCovers2pi
+
+    def SphericalHive_ThetaCoversPi(self):
+        return self.ThetaCoversPi
 
     def ret(self,what="all"):
         if (what.upper()=="RRS"):
@@ -285,7 +339,7 @@ class SphericalHive(Hive):
             print("SphericalHive.ret(): what to return? %s"%(what))
 
 def CheckSphericalRange(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP):
-    'See the docstring of the Grid.SphericalShell() method'
+    'See the docstring of the SphericalShell() method'
     oRmin,oRmax,oNR,oTmin,oTmax,oNT,oPmin,oPmax,oNP = \
         Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP
     if (oRmin>oRmax):
@@ -309,6 +363,9 @@ def CheckSphericalRange(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP):
     if ( oPmin<-180 or oPmax>180 ):
         print("grid.CheckSphericalRange(): allowed range for phi: [-180:180] - given: [%g:%g]!"%(oPmin,oPmax))
         exit(1)
+    if ( oPmax-oPmin==360 ):
+        print("grid.CheckSphericalRange(): allowed range for phi: <360 - given: %g!"%(oPmax-oPmin))
+        exit(1)
     if (oNR<=0):
         print("grid.CheckSphericalRange(): NR<=0!")
         exit(1)
@@ -323,16 +380,17 @@ def CheckSphericalRange(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP):
 if ( __name__ == "__main__" ):
     # perform some tests
     lDebug=True
-    R=500
-    dR=50
+    Rmin=75.0
+    Rmax=125.0
     NR=1
-    Tmax=3    # theta [degs] --> range: -Tmax:Tmax
-    NT=0      # number of steps (i.e. entities)
-    Pmax=2    # phi [degs] --> range: -Pmax:Pmax
-    NP=0      # number of steps (i.e. entities)
-    myGrid=Grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
-    # print(DefHiveBoundaries_SphericalShell_OneLayer(R,50,Tmax,NT,Pmax,NP))
-    for loc in myGrid:
-        print(loc.ret("Point"))
-    myHive=SphericalHive(R,R+dR,NR,-Tmax,Tmax,NT,-Pmax,Pmax,NP,lDebug=lDebug)
-    
+    Tmin=-90.0 # theta [degs] --> range: -Tmax:Tmax
+    Tmax=90.0  # theta [degs] --> range: -Tmax:Tmax
+    NT= 19     # number of steps (i.e. grid cells)
+    Pmin=-180
+    Pmax=160   # phi [degs] --> range: -Pmax:Pmax
+    NP=18      # number of steps (i.e. grid cells)
+
+    # - hive geometry
+    cellGrid=SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
+    myHive=SphericalHive(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
+    RRs,TTs,PPs=myHive.ret(what="all")
