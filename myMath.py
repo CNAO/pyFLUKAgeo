@@ -7,7 +7,7 @@ import copy
 
 class Matrix:
     '''
-    very simple class coding a 2D matrix
+    very simple class coding a 2D SQUARED matrix
     '''
 
     def __init__(self,nDim=3):
@@ -32,23 +32,26 @@ class Matrix:
         return buf
 
     def mulMat(self,RMat,lDebug=True):
-        'method to multiply 2D squared matrices of the same number of rows'
+        '''
+        method to multiply squared matrices of the same number of rows:
+                  R_i,j = SUM_k self_i,k x RMat_k,j
+        '''
         if (self.nDim!=RMat.nDim):
             print("cannot multiply a %dx%d matrix times a %dx%d matrix"%\
                   (self.nDim,self.nDim,RMat.nDim,RMat.nDim))
             exit(1)
-        newMat=copy.deepcopy(self)
+        newMat=copy.deepcopy(self) # preserve original class in daughter classes
         for ii in range(self.nDim):
             for jj in range(self.nDim):
-                self[ii,jj]=sum([ newMat[ii,kk]*RMat[kk,jj]\
+                newMat[ii,jj]=sum([ self[ii,kk]*RMat[kk,jj]\
                                         for kk in range(self.nDim)])
         if (lDebug):
             print("Matrix.mulMat():")
-            print(self.echo())
-        return
+            print(newMat.echo())
+        return newMat
 
     def mulArr(self,myArr,lDebug=True):
-        'method to multiply a 2D squared matrix by an array'
+        'method to multiply a squared matrix by an array'
         if (self.nDim!=len(myArr)):
             print("cannot multiply a %dx%d matrix times a %d array"%\
                   (self.nDim,self.nDim,len(myArr)))
@@ -60,6 +63,82 @@ class Matrix:
         if (lDebug):
             print("Matrix.mulArr():",out)
         return out
+
+    def mulSca(self,mySca):
+        'method to multiply a squared matrix by an array'
+        newMat=copy.deepcopy(self) # preserve original class in daughter classes
+        for ii in range(self.nDim):
+            for jj in range(self.nDim):
+                newMat[ii,jj]=self[ii,jj]*mySca
+        return newMat
+
+    def Minor(self,ll,mm):
+        'calculate minor of self at pos ll,mm'
+        newMat=Matrix(self.nDim-1)
+        kk=0
+        for ii in range(self.nDim):
+            if (ii==ll):
+                continue
+            nn=0
+            for jj in range(self.nDim):
+                if (jj==mm):
+                    continue
+                newMat[kk,nn]=self[ii,jj]
+                nn=nn+1
+            kk=kk+1
+        return newMat
+
+    def Cofactor(self,ii,jj):
+        if ((ii+jj)%2==1):
+            return -1
+        else:
+            return  1
+
+    def MinMat(self):
+        'calculate matrix of minors'
+        newMat=copy.deepcopy(self) # preserve original class in daughter classes
+        for ii in range(self.nDim):
+            for jj in range(self.nDim):
+                newMat[ii,jj]=self.Minor(ii,jj).det()
+        return newMat
+
+    def CofactMat(self):
+        'calculate matrix of co-factors'
+        newMat=copy.deepcopy(self) # preserve original class in daughter classes
+        for ii in range(self.nDim):
+            for jj in range(self.nDim):
+                if ((ii+jj)%2==1):
+                    newMat[ii,jj]=newMat[ii,jj]*self.Cofactor(ii,jj)
+        return newMat
+
+    def AdjugateMat(self):
+        'calculate adjugate matrix, i.e. the transposed'
+        newMat=copy.deepcopy(self) # preserve original class in daughter classes
+        for ii in range(self.nDim):
+            for jj in range(self.nDim):
+                newMat[ii,jj]=self[jj,ii]
+        return newMat
+
+    def det(self):
+        'calculate the determinant of the matrix'
+        if (self.nDim==2):
+            return self[0,0]*self[1,1]-self[1,0]*self[0,1]
+        else:
+            det=0.0
+            for ii in range(self.nDim):
+                det=det+self[0,ii]*self.Minor(0,ii).det()*self.Cofactor(0,ii)
+            return det
+
+    def inv(self):
+        '''
+        invert the matrix - based on:
+        https://www.mathsisfun.com/algebra/matrix-inverse-minors-cofactors-adjugate.html
+        '''
+        newMat=copy.deepcopy(self) # preserve original class in daughter classes
+        newMat=newMat.MinMat()
+        newMat=newMat.CofactMat()
+        newMat=newMat.AdjugateMat()
+        return newMat.mulSca(1/self.det())
 
 class UnitMat(Matrix):
     '''
@@ -83,7 +162,7 @@ class RotMat(UnitMat):
     . S=sin(theta)
     . theta>0: anti-clockwise rotation when seen from the rotation axis
     '''
-    def __init__(self,myAng=0.0,myAxis=3,lDegs=True,lDebug=True):
+    def __init__(self,myAng=0.0,myAxis=3,lDegs=True,lDebug=False):
         # first, initialise matrix as unit matrix;
         UnitMat.__init__(self,nDim=3)
         # then, fill it with the actual trigonometric values
@@ -115,38 +194,69 @@ class RotMat(UnitMat):
 
     @staticmethod
     def ConcatenatedRotMatrices(myAngs=[],myAxes=[],lDegs=True,lDebug=True):
-        if (len(myAngs)!=len(myAxes)):
-            print("number of angles (%d) and axes (%d) do not match!"%(\
-                  len(myAngs),len(myAxes)))
-            exit(1)
         # go through the array on angles and axes to define the overall
         #   matrix transformation
         rotMatrices=[]
         if (lDebug):
             print("creating rotation matrices...")
-        for iTrasf in range(len(myAngs)):
-            if (not lDegs):
-                angDegs=np.degrees(myAngs[iTrasf])
-                angRads=myAngs[iTrasf]
+        for myAng,myAx in zip(myAngs,myAxes):
+            angDegs=myAng
+            angRads=myAng
+            if (lDegs):
+                angRads=np.radians(angRads)
             else:
-                angDegs=myAngs[iTrasf]
-                angRads=np.radians(myAngs[iTrasf])
+                angDegs=np.degrees(angDegs)
             if (lDebug):
                 print("...creating rotation matrix: %g degs around %d axis..."%\
-                      (angDegs,myAxes[iTrasf]))
-            rotMatrices.append(RotMat(myAng=myAngs[iTrasf],myAxis=myAxes[iTrasf],\
+                      (angDegs,myAx))
+            rotMatrices.append(RotMat(myAng=myAng,myAxis=myAx,\
                           lDegs=lDegs,lDebug=lDebug))
         if (lDebug):
             print("concatenating them...")
-        newMat=UnitMat()
-        for iTrasf in range(len(myAngs)-1,-1,-1):
-            newMat.mulMat(rotMatrices[iTrasf],lDebug=lDebug)
+        newMat=RotMat(lDebug=lDebug)
+        for rotMat in rotMatrices:
+            newMat=rotMat.mulMat(newMat,lDebug=lDebug)
             
         return newMat
+
+    def GetGimbalAngles(self,lDegs=True):
+        '''
+        The current matrix is analysed as:
+           R=RxRyRz=
+             |    CyCz        -CySz      Sy  |
+             | CxSz+SxSyCz CxCz-SxSySz -SxCy |
+             | SxSz-CxSyCz SxCz+CxSySz  CxCy |
+        Ranges:
+        - thetas[0]=ang_x: [-pi:pi];
+        - thetas[1]=ang_y: [-pi/2:pi/2];
+        - thetas[2]=ang_z: [-pi:pi];
+        '''
+        thetas=np.zeros(3)
+        thetas[0]=np.arctan2(-self[1,2],self[2,2])
+        thetas[1]=np.arcsin(self[0,2])
+        thetas[2]=np.arctan2(-self[0,1],self[0,0])
+        if (lDegs):
+            thetas=np.degrees(thetas)
+        return thetas
                 
 if (__name__=="__main__"):
-    lDebug=True
-    myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
-    myMat=RotMat.ConcatenatedRotMatrices(myAngs=[90,90,90],myAxes=[1,2,3],\
+    lDebug=False
+    # myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
+    # myMat=RotMat.ConcatenatedRotMatrices(myAngs=[60,30,90],myAxes=[1,2,3],\
+    #                               lDegs=True,lDebug=lDebug)
+    # print(myMat.det())
+    # print(myMat.echo())
+    # print(myMat.inv().echo())
+    myMat=RotMat.ConcatenatedRotMatrices(myAngs=[60,30,90],myAxes=[3,2,1],\
                                   lDegs=True,lDebug=lDebug)
-
+    print(myMat.echo())
+    print(myMat.GetGimbalAngles())
+    print(myMat.inv().echo())
+    print(myMat.inv().GetGimbalAngles())
+    print(myMat.mulMat(myMat.inv()).echo())
+    myMat=RotMat.ConcatenatedRotMatrices(myAngs=[60,30,90],myAxes=[1,2,3],\
+                                  lDegs=True,lDebug=lDebug)
+    print(myMat.echo())
+    print(myMat.GetGimbalAngles())
+    print(myMat.inv().echo())
+    print(myMat.inv().GetGimbalAngles())
