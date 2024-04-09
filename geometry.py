@@ -67,10 +67,14 @@ class Body(GeoObject):
         self.P=np.zeros(3)
         self.V=np.array([0.0,0.0,1.0])
         self.Rs=np.zeros(2)
+        self.lInf=False
 
     def echo(self,numFmt=" % 18.11E"):
         '''take into account comment'''
         myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
+        if (self.lInf):
+            print("...body %s is infinite!! Cannot print it..."%(myStr))
+            exit(1)
         if (self.bType=="PLA"):
             myStr=myStr+numFmt*(len(self.V)+len(self.P))%( self.V[0], self.V[1], self.V[2], \
                                                            self.P[0], self.P[1], self.P[2] )
@@ -90,7 +94,7 @@ class Body(GeoObject):
         return myStr
 
     @staticmethod
-    def fromBuf(tmpLines):
+    def fromBuf(tmpLines,infL=1000.0):
         newBody=Body()
         for tmpLine in tmpLines.splitlines():
             data=tmpLine.split()
@@ -125,24 +129,33 @@ class Body(GeoObject):
                 newBody.P=np.array(data[2:5]).astype(float)
                 newBody.V=np.array(data[5:8]).astype(float)
                 newBody.Rs=np.array(data[8:]).astype(float)
+            elif (data[0]=="RCC"):
+                newBody.bType="RCC"
+                newBody.rename(data[1],lNotify=False)
+                newBody.P=np.array(data[2:5]).astype(float)
+                newBody.V=np.array(data[5:8]).astype(float)
+                newBody.Rs[0]=float(data[8])
             elif (data[0]=="XCC"):
                 newBody.bType="RCC"
                 newBody.rename(data[1],lNotify=False)
-                newBody.P=np.array([-1E+8]+data[2:4]).astype(float)
-                newBody.V=np.array([2.0E+8,0.0,0.0]).astype(float)
+                newBody.P=np.array([-infL]+data[2:4]).astype(float)
+                newBody.V=np.array([2*infL,0.0,0.0]).astype(float)
                 newBody.Rs[0]=float(data[4])
+                newBody.lInf=True
             elif (data[0]=="YCC"):
                 newBody.bType="RCC"
                 newBody.rename(data[1],lNotify=False)
-                newBody.P=np.array([data[3],-1E+8,data[2]]).astype(float)
-                newBody.V=np.array([0.0,2.0E+8,0.0]).astype(float)
+                newBody.P=np.array([data[3],-infL,data[2]]).astype(float)
+                newBody.V=np.array([0.0,2*infL,0.0]).astype(float)
                 newBody.Rs[0]=float(data[4])
+                newBody.lInf=True
             elif (data[0]=="ZCC"):
                 newBody.bType="RCC"
                 newBody.rename(data[1],lNotify=False)
-                newBody.P=np.array(data[2:4]+[-1E+8]).astype(float)
-                newBody.V=np.array([0.0,0.0,2.0E+8]).astype(float)
+                newBody.P=np.array(data[2:4]+[-infL]).astype(float)
+                newBody.V=np.array([0.0,0.0,2*infL]).astype(float)
                 newBody.Rs[0]=float(data[4])
+                newBody.lInf=True
             elif (tmpLine.startswith("*")):
                 newBody.tailMe(tmpLine)
             else:
@@ -168,6 +181,17 @@ class Body(GeoObject):
             else:
                 myMat=myMath.RotMat(myAng=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                 self.rotate(myMat=myMat,myTheta=None,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
+
+    def resize(self,newL):
+        myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
+        if (not self.lInf):
+            print("...body %s NOT infinite: cannot resize!"%(myStr))
+            exit(1)
+        meanPoint=self.P+self.V/2.
+        versor=self.V/np.linalg.norm(self.V)
+        self.V=versor*newL
+        self.P=meanPoint-self.V/2.
+        self.lInf=False
                 
 class Region(GeoObject):
     '''
@@ -1416,10 +1440,10 @@ if (__name__=="__main__"):
 
     # - gridded crystals
     #   acquire geometries
-    fileNames=[ "caloCrys_01.inp" ] ; geoNames=fileNames
+    fileNames=[ "caloCrys_02.inp" ] ; geoNames=fileNames
     myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames);
     cellGrid=grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
-    myProtoList=[ "caloCrys_01.inp" for ii in range(len(cellGrid)) ]
+    myProtoList=[ "caloCrys_02.inp" for ii in range(len(cellGrid)) ]
     GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lDebug=lDebug)
     # GridGeo.echo("grid.inp")
 
