@@ -68,7 +68,7 @@ class Body(GeoObject):
         self.V=np.array([0.0,0.0,1.0])
         self.Rs=np.zeros(2)
 
-    def echo(self,numFmt=" % 15.8E"):
+    def echo(self,numFmt=" % 18.11E"):
         '''take into account comment'''
         myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
         if (self.bType=="PLA"):
@@ -80,6 +80,10 @@ class Body(GeoObject):
             myStr=myStr+numFmt*(len(self.P)+len(self.V))%( self.P[0],  self.P[1],  self.P[2], \
                                                            self.V[0],  self.V[1],  self.V[2] ) \
                        +"\n%12s"%("")+numFmt*(len(self.Rs))%( self.Rs[0], self.Rs[1] )
+        elif (self.bType=="RCC"):
+            myStr=myStr+numFmt*(len(self.P)+len(self.V))%( self.P[0],  self.P[1],  self.P[2], \
+                                                           self.V[0],  self.V[1],  self.V[2] ) \
+                       +"\n%12s"%("")+numFmt%( self.Rs[0] )
         else:
             print("body %s NOT supported yet!"%(self.bType))
             exit(1)
@@ -99,28 +103,46 @@ class Body(GeoObject):
                 newBody.bType="PLA"
                 newBody.rename(data[1],lNotify=False)
                 newBody.V=np.array([1.0,0.0,0.0])
-                newBody.P[0]=data[2].astype(float)
+                newBody.P[0]=float(data[2])
             elif (data[0]=="XZP"):
                 newBody.bType="PLA"
                 newBody.rename(data[1],lNotify=False)
                 newBody.V=np.array([0.0,1.0,0.0])
-                newBody.P[1]=data[2].astype(float)
+                newBody.P[1]=float(data[2])
             elif (data[0]=="XYP"):
                 newBody.bType="PLA"
                 newBody.rename(data[1],lNotify=False)
                 newBody.V=np.array([0.0,0.0,1.0])
-                newBody.P[2]=data[2].astype(float)
+                newBody.P[2]=float(data[2])
             elif (data[0]=="SPH"):
                 newBody.bType="SPH"
                 newBody.rename(data[1],lNotify=False)
                 newBody.P=np.array(data[2:5]).astype(float)
-                newBody.Rs[0]=data[5].astype(float)
+                newBody.Rs[0]=float(data[5])
             elif (data[0]=="TRC"):
                 newBody.bType="TRC"
                 newBody.rename(data[1],lNotify=False)
                 newBody.P=np.array(data[2:5]).astype(float)
                 newBody.V=np.array(data[5:8]).astype(float)
                 newBody.Rs=np.array(data[8:]).astype(float)
+            elif (data[0]=="XCC"):
+                newBody.bType="RCC"
+                newBody.rename(data[1],lNotify=False)
+                newBody.P=np.array([-1E+8]+data[2:4]).astype(float)
+                newBody.V=np.array([2.0E+8,0.0,0.0]).astype(float)
+                newBody.Rs[0]=float(data[4])
+            elif (data[0]=="YCC"):
+                newBody.bType="RCC"
+                newBody.rename(data[1],lNotify=False)
+                newBody.P=np.array([data[3],-1E+8,data[2]]).astype(float)
+                newBody.V=np.array([0.0,2.0E+8,0.0]).astype(float)
+                newBody.Rs[0]=float(data[4])
+            elif (data[0]=="ZCC"):
+                newBody.bType="RCC"
+                newBody.rename(data[1],lNotify=False)
+                newBody.P=np.array(data[2:4]+[-1E+8]).astype(float)
+                newBody.V=np.array([0.0,0.0,2.0E+8]).astype(float)
+                newBody.Rs[0]=float(data[4])
             elif (tmpLine.startswith("*")):
                 newBody.tailMe(tmpLine)
             else:
@@ -1199,6 +1221,12 @@ class Geometry():
                 myGeo.solidTrasform(dd=myLoc.ret("POINT"),myMat=myLoc.ret("MATRIX"),lDebug=lDebug)
             # - flag the region(s) outside the prototypes or that should be sized
             #   by the hive cells
+            if (not isinstance(osRegNames, list)):
+                if ( osRegNames.upper()=="ALL" ):
+                    osRegNames, iEntry =myGeo.ret("REG","ALL")
+                else:
+                    print("osRegNames must be either a list or the string 'all'!")
+                    exit(1)
             myGeo.flagRegs(osRegNames,-1,myLoc.ret("POINT"))
             # - rename the clone
             baseName="GR%03d"%(iLoc)
