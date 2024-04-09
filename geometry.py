@@ -72,7 +72,7 @@ class Body(GeoObject):
     def echo(self,numFmt=" % 18.11E"):
         '''take into account comment'''
         myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
-        if (self.lInf):
+        if (self.isInf()):
             print("...body %s is infinite!! Cannot print it..."%(myStr))
             exit(1)
         if (self.bType=="PLA"):
@@ -92,6 +92,9 @@ class Body(GeoObject):
             print("body %s NOT supported yet!"%(self.bType))
             exit(1)
         return myStr
+
+    def isInf(self):
+        return self.lInf
 
     @staticmethod
     def fromBuf(tmpLines,infL=1000.0):
@@ -184,7 +187,7 @@ class Body(GeoObject):
 
     def resize(self,newL):
         myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
-        if (not self.lInf):
+        if (not self.isInf()):
             print("...body %s NOT infinite: cannot resize!"%(myStr))
             exit(1)
         meanPoint=self.P+self.V/2.
@@ -213,12 +216,13 @@ class Region(GeoObject):
         # additional fields
         self.initCont()
 
-    def initCont(self,rCont=0,rCent=np.array([0.0,0.0,0.0])):
+    def initCont(self,rCont=0,rCent=np.array([0.0,0.0,0.0]),rMaxLen=0.0):
         self.rCont=rCont # containment indicator (1 per region):
                          # -1: region to be contained into/sized by another one
                          #  0: regular region (neither contains nor it is contained)
                          #  1: cell region (it contains another region)
         self.rCent=rCent # central point of one or more region (3D array)
+        self.rMaxLen=rMaxLen # max length from hive cell
 
     @staticmethod
     def fromBuf(myBuffer):
@@ -273,6 +277,25 @@ class Region(GeoObject):
         else:
             return GeoObject.echoComm(self)+"%-8s   %4d %s" % \
                 ( self.echoName(), self.neigh, self.definition )
+
+    def retBodiesInDef(self):
+        'return list of body names in region definition'
+        bodiesInDef=[]
+        if (self.isNonEmpty):
+            for myLine in self.definition.splitlines():
+                if (myLine.startswith("*")): continue # comment line
+                tmpLine=myLine.replace("|"," ")
+                tmpLine=tmpLine.replace("+"," ")
+                tmpLine=tmpLine.replace("-"," ")
+                currBodies=tmpLine.strip().split()
+                for currBody in currBodies:
+                    tmpBody=currBody.strip()
+                    if (tmpBody not in bodiesInDef):
+                        bodiesInDef.append(tmpBody)
+        else:
+            print("Region %s is empty!"%(self.echoName()))
+            exit(1)
+        return bodiesInDef
 
     def merge(self,newReg,spacing=" "*16):
         # warn user in comment
@@ -622,7 +645,23 @@ class Geometry():
             
     def ret(self,what,myName):
         lFound=False
-        if (what.upper().startswith("BOD")):
+        if (what.upper().startswith("BODSINREG")):
+            if (myName.upper()=="ALL"):
+                myReg,iReg=self.ret("reg","ALL")
+                myEntry=[]; iEntry=[]
+                for findReg in myReg:
+                    tmpEl,tmpInd=self.ret("BodsInReg",findReg)
+                    myEntry=myEntry+tmpEl
+                    iEntry=iEntry+tmpInd
+            else:
+                myReg,iReg=self.ret("reg",myName)
+                myEntry=myReg.retBodiesInDef()
+                iEntry=[]
+                for findBod in myEntry:
+                    tmpEl,tmpInd=self.ret("bod",findBod)
+                    iEntry.append(tmpInd)
+                lFound=True
+        elif (what.upper().startswith("BOD")):
             if (myName.upper()=="ALL"):
                 myEntry=[ body.echoName() for body in self.bods ]
                 iEntry=[ ii for ii in range(len(self.bods)) ]
@@ -1021,17 +1060,38 @@ class Geometry():
     def flagRegs(self,whichRegs,rCont,rCent):
         if (whichRegs is str):
             if (whichRegs.upper()=="ALL"):
-                regs2mod,iRegs2mod=myGeo.ret("reg","ALL")
+                regs2mod,iRegs2mod=self.ret("reg","ALL")
             else:
                 regs2mod=[whichRegs]
         else:
             if ( "ALL" in [tmpStr.upper() for tmpStr in whichRegs] ):
-                regs2mod,iRegs2mod=myGeo.ret("reg","ALL")
+                regs2mod,iRegs2mod=self.ret("reg","ALL")
             else:
                 regs2mod=whichRegs
-        for whichReg in whichRegs:
+        for whichReg in regs2mod:
             outReg,iReg=self.ret("reg",whichReg)
             outReg.initCont(rCont=rCont,rCent=rCent)
+
+    def resizeInfBodies(self,newL,whichBods):
+        '''
+        input:
+        - newL: new length [cm];
+        - whichBods: list of body names to be updated (if infinite)
+        '''
+        if (whichBods is str):
+            if (whichBods.upper()=="ALL"):
+                bods2mod,iBods2mod=self.ret("bod","ALL")
+            else:
+                bods2mod=[whichBods]
+        else:
+            if ( "ALL" in [tmpStr.upper() for tmpStr in whichBods] ):
+                bods2mod,iBods2mod=self.ret("bod","ALL")
+            else:
+                bods2mod=whichBods
+        for bod2mod in bods2mod:
+            whichBod,iBod=self.ret("bod",bod2mod)
+            if (whichBod.isInf()):
+                whichBod.resize(newL)
 
     @staticmethod
     def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,defMat="VACUUM",tmpTitle="Hive for a spherical shell",lWrapBHaround=False,lDebug=True):
@@ -1163,10 +1223,11 @@ class Geometry():
                 tmpReg.material=defMat
                 tmpReg.addZone('+%-8s -%-8s +%-8s'%(spheres[iR].echoName(),spheres[iR-1].echoName(),thetas[0].echoName()))
                 myCenter=cellGrid.ret(what="POINT",iEl=iHive)
+                rMaxLen=1.1*max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(TTs[0]-90)))
                 tmpReg.tailMe("* - hive region %4d: SOUTH POLE! R[cm]=[%g:%g], theta[deg]=[-90:%g]"%(
                     iHive,RRs[iR-1],RRs[iR],TTs[0]))
                 tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
-                tmpReg.initCont(rCont=1,rCent=myCenter)
+                tmpReg.initCont(rCont=1,rCent=myCenter,rMaxLen=rMaxLen)
                 newGeom.add(tmpReg,what="reg")
                 iHive=iHive+1
             for iT in range(1,len(thetas)):
@@ -1184,10 +1245,11 @@ class Geometry():
                     pDef='+%-8s -%-8s'%(phis[iP].echoName(),phis[iP-1].echoName())
                     tmpReg.addZone('%s %s %s'%(rDef,tDef,pDef))
                     myCenter=cellGrid.ret(what="POINT",iEl=iHive)
+                    rMaxLen=1.1*max(RRs[iR]-RRs[iR-1],RRs[iR]*np.radians(TTs[iT]-TTs[iT-1]),RRs[iR]*np.radians(PPs[iT]-PPs[iT-1]))
                     tmpReg.tailMe("* - hive region %4d: R[cm]=[%g:%g], theta[deg]=[%g:%g], phi[deg]=[%g:%g]"%(
                         iHive,RRs[iR-1],RRs[iR],TTs[iT-1],TTs[iT],PPs[iP-1],PPs[iP]))
                     tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
-                    tmpReg.initCont(rCont=1,rCent=myCenter)
+                    tmpReg.initCont(rCont=1,rCent=myCenter,rMaxLen=rMaxLen)
                     newGeom.add(tmpReg,what="reg")
                     iHive=iHive+1
             if (cellGrid.HasPole("N")):
@@ -1196,10 +1258,11 @@ class Geometry():
                 tmpReg.material=defMat
                 tmpReg.addZone('+%-8s -%-8s +%-8s'%(spheres[iR].echoName(),spheres[iR-1].echoName(),thetas[-1].echoName()))
                 myCenter=cellGrid.ret(what="POINT",iEl=iHive)
+                rMaxLen=1.1*max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(90-TTs[-1])))
                 tmpReg.tailMe("* - hive region %4d: NORTH POLE! R[cm]=[%g:%g], theta[deg]=[%g:90]"%(
                     iHive,RRs[iR-1],RRs[iR],TTs[-1]))
                 tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
-                tmpReg.initCont(rCont=1,rCent=myCenter)
+                tmpReg.initCont(rCont=1,rCent=myCenter,rMaxLen=rMaxLen)
                 newGeom.add(tmpReg,what="reg")
                 iHive=iHive+1
 
@@ -1245,12 +1308,6 @@ class Geometry():
                 myGeo.solidTrasform(dd=myLoc.ret("POINT"),myMat=myLoc.ret("MATRIX"),lDebug=lDebug)
             # - flag the region(s) outside the prototypes or that should be sized
             #   by the hive cells
-            if (not isinstance(osRegNames, list)):
-                if ( osRegNames.upper()=="ALL" ):
-                    osRegNames, iEntry =myGeo.ret("REG","ALL")
-                else:
-                    print("osRegNames must be either a list or the string 'all'!")
-                    exit(1)
             myGeo.flagRegs(osRegNames,-1,myLoc.ret("POINT"))
             # - rename the clone
             baseName="GR%03d"%(iLoc)
@@ -1309,6 +1366,11 @@ class Geometry():
             for jRhg in iRhg:
                 for jRgg in iRgg:
                     if (np.linalg.norm(gridGeo.regs[jRgg].rCent-hiveGeo.regs[jRhg].rCent)<prec):
+                        # resize infinite bodies
+                        newL=hiveGeo.regs[jRhg].rMaxLen
+                        whichBods=gridGeo.regs[jRgg].retBodiesInDef()
+                        gridGeo.resizeInfBodies(newL,whichBods=whichBods)
+                        # actually merge
                         gridGeo.regs[jRgg].merge(hiveGeo.regs[jRhg])
                         if (hiveGeo.regs[jRhg].echoName() not in removeRegs):
                             removeRegs.append(hiveGeo.regs[jRhg].echoName())
