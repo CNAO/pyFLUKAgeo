@@ -8,6 +8,10 @@ from copy import deepcopy
 import myMath
 import grid
 
+expDigits=18
+numDigist=expDigits-7
+numFmt=" %% %d.%dE"%(expDigits,numDigist)
+
 class GeoObject():
     '''
     A very basic object, implementing simply a name and a comment.
@@ -68,10 +72,11 @@ class Body(GeoObject):
         self.V=np.array([0.0,0.0,1.0])
         self.Rs=np.zeros(2)
         self.lIsRotatable=True
+        self.TransformName=None
 
-    def echo(self,numFmt=" % 18.11E"):
+    def echo(self,numFmt=numFmt):
         '''take into account comment'''
-        myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
+        myStr="%-3s %8s"%(self.bType,self.echoName())
         if (self.bType=="PLA"):
             myStr=myStr+numFmt*(len(self.V)+len(self.P))%( self.V[0], self.V[1], self.V[2], \
                                                            self.P[0], self.P[1], self.P[2] )
@@ -100,10 +105,19 @@ class Body(GeoObject):
         else:
             print("body %s NOT supported yet!"%(self.bType))
             exit(1)
-        return myStr
+        if (self.TransformName is not None):
+            myStr="$Start_transform -%s\n%s\n$end_transform"%(self.TransformName,myStr)
+        return GeoObject.echoComm(self)+myStr
 
     def isRotatable(self):
         return self.lIsRotatable
+
+    def linkTransformName(self,Tname=None):
+        if (Tname is not None or Tname!=""):
+            self.TransformName=Tname
+            
+    def retTransformName(self):
+        return self.TransformName
 
     @staticmethod
     def fromBuf(tmpLines):
@@ -391,7 +405,7 @@ class RotDefi(GeoObject):
         self.theta=myTh          # azimuth angle [degrees] (FLUKA units)
         self.DD=myDD             # translation [cm] (x,y,z components)
 
-    def echo(self,lFree=True,myID=0,myName=""):
+    def echo(self,lFree=True,myID=0,myName="",numFmt=numFmt):
         '''echo in FREE format uses an empty space as field separator'''
         if (myID<=0):
             print("...cannot dump a ROT-DEFI card without an index!")
@@ -409,8 +423,9 @@ class RotDefi(GeoObject):
                 myIDecho=myIDecho+self.axis
         if (lFree):
             return GeoObject.echoComm(self)+ \
-                "ROT-DEFI  %10.1f % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E %-10s"\
-                %( myIDecho, self.phi, self.theta, self.DD[0], self.DD[1], self.DD[2], myName)
+                "ROT-DEFI  %10.1f"%(myIDecho)+\
+                numFmt*5%(self.phi,self.theta, self.DD[0], self.DD[1], self.DD[2])+\
+                " %-10s"%(myName)
         else:
             return GeoObject.echoComm(self)+ \
                 "ROT-DEFI  %10.1f% 10G% 10G% 10G% 10G% 10G%-10s"\
@@ -674,7 +689,7 @@ class Geometry():
             iEntry=0
         self.tras[iEntry].AddRotDefi(tmpRotDefi)
 
-    def headMe(self,myString,begLine="* \n"+"* "+"="*108,endLine="* "+"-"*108+"\n* "):
+    def headMe(self,myString,begLine="* \n"+"* "+"="*7*expDigits,endLine="* "+"-"*7*expDigits+"\n* "):
         '''
         simple method to head a string to the geometry declaration (bodies,
            regions, assignma, usrbin, rot-defi cards)
@@ -996,7 +1011,7 @@ class Geometry():
         else:
             print("...what should I echo? %s NOT reconised!"%(what))
 
-    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lDebug=False):
+    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lGeoDirs=False,lDebug=False):
         '''
         Bodies are applied the transformation as requested by the user:
         * first, rotation (meant to be expressed in ref sys of the object to rotate);
@@ -1014,11 +1029,16 @@ class Geometry():
             print("...no transformation provided!")
         else:
             ROTDEFIlist=[]
+            myName="ToFinPos"
             if (myMat is not None):
                 print("...applying transformation expressed by matrix to geometry...")
-                for ii in range(len(self.bods)):
-                    self.bods[ii].rotate(myMat=myMat,myTheta=None,myAxis=None,\
-                                         lDegs=lDegs,lDebug=lDebug)
+                if (lGeoDirs):
+                    for ii in range(len(self.bods)):
+                        self.bods[ii].linkTransformName(Tname=myName)
+                else:
+                    for ii in range(len(self.bods)):
+                        self.bods[ii].rotate(myMat=myMat,myTheta=None,myAxis=None,\
+                                             lDegs=lDegs,lDebug=lDebug)
                 thetas=myMat.GetGimbalAngles() # [degs]
                 for myAx,myTh in enumerate(thetas,1):
                     if (myTh!=0.0):
@@ -1030,32 +1050,42 @@ class Geometry():
                               %(len(myTheta),len(myAxis)))
                         exit(1)
                     for myT,myAx in zip(myTheta,myAxis):
+                        # iteratively call this same method, on a single angle
                         self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lDebug=lDebug)
                 elif (myTheta!=0.0):
                     print("...applying rotation by %f degs around axis %d..."%\
                           (myTheta,myAxis))
-                    for ii in range(len(self.bods)):
-                        self.bods[ii].rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,\
-                                             lDegs=lDegs,lDebug=lDebug)
+                    if (lGeoDirs):
+                        for ii in range(len(self.bods)):
+                            self.bods[ii].linkTransformName(Tname=myName)
+                    else:
+                        for ii in range(len(self.bods)):
+                            self.bods[ii].rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,\
+                                                 lDegs=lDegs,lDebug=lDebug)
                     ROTDEFIlist.append(RotDefi(myAx=myAxis,myTh=myTheta))
             if (dd is not None):
                 print("...applying traslation array [%f,%f,%f] cm..."%\
                       (dd[0],dd[1],dd[2]))
-                for ii in range(len(self.bods)):
-                    self.bods[ii].traslate(dd=dd)
+                if (lGeoDirs):
+                    for ii in range(len(self.bods)):
+                        self.bods[ii].linkTransformName(Tname=myName)
+                else:
+                    for ii in range(len(self.bods)):
+                        self.bods[ii].traslate(dd=dd)
                 myDD=-dd
                 if (isinstance(myDD,list)):
                     myDD=np.array(DD)
                 ROTDEFIlist=[RotDefi(myDD=myDD)]+ROTDEFIlist
             if (len(ROTDEFIlist)>0):
-                # - check presence of USRBINs without ROTPRBIN cards:
-                #   if there is one, add the transformation
-                lCreate=False
-                myName="ToFinPos"
-                for myBin in self.bins:
-                    if ( myBin.returnTrasf()=="" ):
-                        lCreate=True
-                        myBin.assignTrasf(myName)
+                # add transformation to actual position if:
+                # - $start_tranform directives are used
+                # - USRBINs without ROTPRBIN cards
+                lCreate=lGeoDirs
+                if ( not lCreate ):
+                    for myBin in self.bins:
+                        if ( myBin.returnTrasf()=="" ):
+                            lCreate=True
+                            myBin.assignTrasf(myName)
                 if (lCreate):
                     print("...adding the final transformation to (existing) list of transformations...")
                     self.add(Transformation(myID=len(self.tras),myName=myName),what="tras")
@@ -1101,6 +1131,13 @@ class Geometry():
             else:
                 print("Geometry.rename(): USRBIN with no original name in geometry!")
                 exit(1)
+        for iBody in range(len(self.bods)):
+            if (self.bods[iBody].retTransformName() is not None):
+                if (self.bods[iBody].retTransformName() not in oldTrasNames):
+                    print("cannot find name of transformation for moving geo: %s!"%(self.bods[iBody].retTransformName()))
+                    exit(1)
+                ii=oldTrasNames.index(self.bods[iBody].retTransformName())
+                self.bods[iBody].linkTransformName(Tname=newTrasNames[ii])
         print("...done.")
 
     def flagRegs(self,whichRegs,rCont,rCent):
@@ -1323,7 +1360,7 @@ class Geometry():
         return newGeom
 
     @staticmethod
-    def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,osRegNames=[],lDebug=True):
+    def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,osRegNames=[],lGeoDirs=False,lDebug=True):
         '''
         This method defines a FLUKA geometry representing a grid of objects.
 
@@ -1352,9 +1389,9 @@ class Geometry():
             #   NB: give priority to angles/axis wrt matrices, for higher
             #       numerical accuracy in final .inp file
             if (len(myLoc.ret("ANGLE"))>0):
-                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myTheta=myLoc.ret("ANGLE"),myAxis=myLoc.ret("AXIS"),lDebug=lDebug)
+                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myTheta=myLoc.ret("ANGLE"),myAxis=myLoc.ret("AXIS"),lGeoDirs=lGeoDirs,lDebug=lDebug)
             else:
-                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myMat=myLoc.ret("MATRIX"),lDebug=lDebug)
+                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myMat=myLoc.ret("MATRIX"),lGeoDirs=lGeoDirs,lDebug=lDebug)
             # - flag the region(s) outside the prototypes or that should be sized
             #   by the hive cells
             myGeo.flagRegs(osRegNames,-1,myLoc.ret("POINT"))
@@ -1524,6 +1561,7 @@ def acquireGeometries(fileNames,geoNames=None):
 
 if (__name__=="__main__"):
     lDebug=False
+    lGeoDirs=False
     # # - manipulate a geometry
     # caloCrysGeo=Geometry.fromInp("caloCrys.inp")
     # myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
@@ -1557,7 +1595,7 @@ if (__name__=="__main__"):
         myProtoGeo.makeBodiesRotatable()
     cellGrid=grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
     myProtoList=[ "caloCrys_02.inp" for ii in range(len(cellGrid)) ]
-    GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lDebug=lDebug)
+    GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lGeoDirs=lGeoDirs,lDebug=lDebug)
     # GridGeo.echo("grid.inp")
 
     # - merge geometries
