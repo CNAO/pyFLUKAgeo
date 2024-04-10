@@ -67,17 +67,20 @@ class Body(GeoObject):
         self.P=np.zeros(3)
         self.V=np.array([0.0,0.0,1.0])
         self.Rs=np.zeros(2)
-        self.lInf=False
+        self.lIsRotatable=True
 
     def echo(self,numFmt=" % 18.11E"):
         '''take into account comment'''
         myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
-        if (self.isInf()):
-            print("...body %s is infinite!! Cannot print it..."%(myStr))
-            exit(1)
         if (self.bType=="PLA"):
             myStr=myStr+numFmt*(len(self.V)+len(self.P))%( self.V[0], self.V[1], self.V[2], \
                                                            self.P[0], self.P[1], self.P[2] )
+        elif (self.bType=="YZP"):
+            myStr=myStr+numFmt%( self.P[0] )
+        elif (self.bType=="XZP"):
+            myStr=myStr+numFmt%( self.P[1] )
+        elif (self.bType=="XYP"):
+            myStr=myStr+numFmt%( self.P[2] )
         elif (self.bType=="SPH"):
             myStr=myStr+numFmt*(len(self.P)+1)%( self.P[0], self.P[1], self.P[2], self.Rs[0] )
         elif (self.bType=="TRC"):
@@ -88,83 +91,127 @@ class Body(GeoObject):
             myStr=myStr+numFmt*(len(self.P)+len(self.V))%( self.P[0],  self.P[1],  self.P[2], \
                                                            self.V[0],  self.V[1],  self.V[2] ) \
                        +"\n%12s"%("")+numFmt%( self.Rs[0] )
+        elif (self.bType=="XCC"):
+            myStr=myStr+numFmt*(2+1)%( self.P[1],  self.P[2],  self.Rs[0] )
+        elif (self.bType=="YCC"):
+            myStr=myStr+numFmt*(2+1)%( self.P[2],  self.P[0],  self.Rs[0] )
+        elif (self.bType=="ZCC"):
+            myStr=myStr+numFmt*(2+1)%( self.P[0],  self.P[1],  self.Rs[0] )
         else:
             print("body %s NOT supported yet!"%(self.bType))
             exit(1)
         return myStr
 
-    def isInf(self):
-        return self.lInf
+    def isRotatable(self):
+        return self.lIsRotatable
 
     @staticmethod
-    def fromBuf(tmpLines,infL=1000.0):
+    def fromBuf(tmpLines):
         newBody=Body()
         for tmpLine in tmpLines.splitlines():
             data=tmpLine.split()
             if (data[0]=="PLA"):
-                newBody.bType="PLA"
+                newBody.bType=data[0]
                 newBody.rename(data[1],lNotify=False)
                 newBody.V=np.array(data[2:5]).astype(float)
                 newBody.P=np.array(data[5:8]).astype(float)
             elif (data[0]=="YZP"):
-                newBody.bType="PLA"
+                newBody.bType=data[0]
                 newBody.rename(data[1],lNotify=False)
-                newBody.V=np.array([1.0,0.0,0.0])
                 newBody.P[0]=float(data[2])
+                newBody.lIsRotatable=False
             elif (data[0]=="XZP"):
-                newBody.bType="PLA"
+                newBody.bType=data[0]
                 newBody.rename(data[1],lNotify=False)
-                newBody.V=np.array([0.0,1.0,0.0])
                 newBody.P[1]=float(data[2])
+                newBody.lIsRotatable=False
             elif (data[0]=="XYP"):
-                newBody.bType="PLA"
+                newBody.bType=data[0]
                 newBody.rename(data[1],lNotify=False)
-                newBody.V=np.array([0.0,0.0,1.0])
                 newBody.P[2]=float(data[2])
+                newBody.lIsRotatable=False
             elif (data[0]=="SPH"):
-                newBody.bType="SPH"
+                newBody.bType=data[0]
                 newBody.rename(data[1],lNotify=False)
                 newBody.P=np.array(data[2:5]).astype(float)
                 newBody.Rs[0]=float(data[5])
             elif (data[0]=="TRC"):
-                newBody.bType="TRC"
+                newBody.bType=data[0]
                 newBody.rename(data[1],lNotify=False)
                 newBody.P=np.array(data[2:5]).astype(float)
                 newBody.V=np.array(data[5:8]).astype(float)
                 newBody.Rs=np.array(data[8:]).astype(float)
             elif (data[0]=="RCC"):
-                newBody.bType="RCC"
+                newBody.bType=data[0]
                 newBody.rename(data[1],lNotify=False)
                 newBody.P=np.array(data[2:5]).astype(float)
                 newBody.V=np.array(data[5:8]).astype(float)
                 newBody.Rs[0]=float(data[8])
             elif (data[0]=="XCC"):
-                newBody.bType="RCC"
+                newBody.bType=data[0]
                 newBody.rename(data[1],lNotify=False)
-                newBody.P=np.array([-infL]+data[2:4]).astype(float)
-                newBody.V=np.array([2*infL,0.0,0.0]).astype(float)
+                newBody.P[1:]=np.array(data[2:4]).astype(float)
                 newBody.Rs[0]=float(data[4])
-                newBody.lInf=True
+                newBody.lIsRotatable=False
             elif (data[0]=="YCC"):
-                newBody.bType="RCC"
+                newBody.bType=data[0]
                 newBody.rename(data[1],lNotify=False)
-                newBody.P=np.array([data[3],-infL,data[2]]).astype(float)
-                newBody.V=np.array([0.0,2*infL,0.0]).astype(float)
+                newBody.P[0]=data[3]; newBody.P[2]=data[2]
                 newBody.Rs[0]=float(data[4])
-                newBody.lInf=True
+                newBody.lIsRotatable=False
             elif (data[0]=="ZCC"):
-                newBody.bType="RCC"
+                newBody.bType=data[0]
                 newBody.rename(data[1],lNotify=False)
-                newBody.P=np.array(data[2:4]+[-infL]).astype(float)
-                newBody.V=np.array([0.0,0.0,2*infL]).astype(float)
+                newBody.P[0:-1]=np.array(data[2:4]).astype(float)
                 newBody.Rs[0]=float(data[4])
-                newBody.lInf=True
+                newBody.lIsRotatable=False
             elif (tmpLine.startswith("*")):
                 newBody.tailMe(tmpLine)
             else:
                 print("body %s NOT supported yet!"%(data[0]))
                 exit(1)
         return newBody
+
+    def makeRotatable(self,lDebug=False,infL=1000.0):
+        if (not self.isRotatable()):
+           myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
+           if (self.bType=="YZP"):
+               if (lDebug):
+                   print("...converting body %s into a PLA"%(myStr))
+               self.bType="PLA"
+               self.V=np.array([1.0,0.0,0.0])
+           elif (self.bType=="XZP"):
+               if (lDebug):
+                   print("...converting body %s into a PLA"%(myStr))
+               self.bType="PLA"
+               self.V=np.array([0.0,1.0,0.0])
+           elif (self.bType=="XYP"):
+               if (lDebug):
+                   print("...converting body %s into a PLA"%(myStr))
+               self.bType="PLA"
+               self.V=np.array([0.0,0.0,1.0])
+           elif (self.bType=="XCC"):
+               if (lDebug):
+                   print("...converting body %s into an RCC"%(myStr))
+               self.bType="RCC"
+               self.P[0]=-infL
+               self.V=np.array([2*infL,0.0,0.0])
+           elif (self.bType=="YCC"):
+               if (lDebug):
+                   print("...converting body %s into an RCC"%(myStr))
+               self.bType="RCC"
+               self.P[1]=-infL
+               self.V=np.array([0.0,2*infL,0.0])
+           elif (self.bType=="ZCC"):
+               if (lDebug):
+                   print("...converting body %s into an RCC"%(myStr))
+               self.bType="RCC"
+               self.P[2]=-infL
+               self.V=np.array([0.0,0.0,2*infL])
+           else:
+               print("cannot make body %s rotatable!"%(myStr))
+               exit(1)
+           self.lIsRotatable=True
 
     def traslate(self,dd=None):
         if (dd is not None):
@@ -185,16 +232,15 @@ class Body(GeoObject):
                 myMat=myMath.RotMat(myAng=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                 self.rotate(myMat=myMat,myTheta=None,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
 
-    def resize(self,newL):
-        myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
-        if (not self.isInf()):
-            print("...body %s NOT infinite: cannot resize!"%(myStr))
-            exit(1)
-        meanPoint=self.P+self.V/2.
-        versor=self.V/np.linalg.norm(self.V)
-        self.V=versor*newL
-        self.P=meanPoint-self.V/2.
-        self.lInf=False
+    def resize(self,newL,lDebug=False):
+        if (self.bType=="RCC"):
+           if (lDebug):
+               myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
+               print("...resizing body %s to L=%g"%(myStr,newL))
+           meanPoint=self.P+self.V/2.
+           versor=self.V/np.linalg.norm(self.V)
+           self.V=versor*newL
+           self.P=meanPoint-self.V/2.
                 
 class Region(GeoObject):
     '''
@@ -1072,7 +1118,7 @@ class Geometry():
             outReg,iReg=self.ret("reg",whichReg)
             outReg.initCont(rCont=rCont,rCent=rCent)
 
-    def resizeInfBodies(self,newL,whichBods):
+    def resizeBodies(self,newL,whichBods):
         '''
         input:
         - newL: new length [cm];
@@ -1090,8 +1136,11 @@ class Geometry():
                 bods2mod=whichBods
         for bod2mod in bods2mod:
             whichBod,iBod=self.ret("bod",bod2mod)
-            if (whichBod.isInf()):
-                whichBod.resize(newL)
+            whichBod.resize(newL)
+
+    def makeBodiesRotatable(self,lDebug=False,infL=1000.):
+        for myBod in self.bods:
+            myBod.makeRotatable(lDebug=lDebug,infL=infL)
 
     @staticmethod
     def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,defMat="VACUUM",tmpTitle="Hive for a spherical shell",lWrapBHaround=False,lDebug=True):
@@ -1369,7 +1418,7 @@ class Geometry():
                         # resize infinite bodies
                         newL=hiveGeo.regs[jRhg].rMaxLen
                         whichBods=gridGeo.regs[jRgg].retBodiesInDef()
-                        gridGeo.resizeInfBodies(newL,whichBods=whichBods)
+                        gridGeo.resizeBodies(newL,whichBods=whichBods)
                         # actually merge
                         gridGeo.regs[jRgg].merge(hiveGeo.regs[jRhg])
                         if (hiveGeo.regs[jRhg].echoName() not in removeRegs):
@@ -1504,6 +1553,8 @@ if (__name__=="__main__"):
     #   acquire geometries
     fileNames=[ "caloCrys_02.inp" ] ; geoNames=fileNames
     myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames);
+    for myProtoName,myProtoGeo in myProtoGeos.items():
+        myProtoGeo.makeBodiesRotatable()
     cellGrid=grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
     myProtoList=[ "caloCrys_02.inp" for ii in range(len(cellGrid)) ]
     GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lDebug=lDebug)
