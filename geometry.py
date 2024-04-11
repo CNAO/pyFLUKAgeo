@@ -1032,10 +1032,7 @@ class Geometry():
             myName="ToFinPos"
             if (myMat is not None):
                 print("...applying transformation expressed by matrix to geometry...")
-                if (lGeoDirs):
-                    for ii in range(len(self.bods)):
-                        self.bods[ii].linkTransformName(Tname=myName)
-                else:
+                if (not lGeoDirs):
                     for ii in range(len(self.bods)):
                         self.bods[ii].rotate(myMat=myMat,myTheta=None,myAxis=None,\
                                              lDegs=lDegs,lDebug=lDebug)
@@ -1051,14 +1048,11 @@ class Geometry():
                         exit(1)
                     for myT,myAx in zip(myTheta,myAxis):
                         # iteratively call this same method, on a single angle
-                        self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lDebug=lDebug)
+                        self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lGeoDirs=lGeoDirs,lDebug=lDebug)
                 elif (myTheta!=0.0):
                     print("...applying rotation by %f degs around axis %d..."%\
                           (myTheta,myAxis))
-                    if (lGeoDirs):
-                        for ii in range(len(self.bods)):
-                            self.bods[ii].linkTransformName(Tname=myName)
-                    else:
+                    if (not lGeoDirs):
                         for ii in range(len(self.bods)):
                             self.bods[ii].rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,\
                                                  lDegs=lDegs,lDebug=lDebug)
@@ -1066,22 +1060,22 @@ class Geometry():
             if (dd is not None):
                 print("...applying traslation array [%f,%f,%f] cm..."%\
                       (dd[0],dd[1],dd[2]))
-                if (lGeoDirs):
-                    for ii in range(len(self.bods)):
-                        self.bods[ii].linkTransformName(Tname=myName)
-                else:
+                if (not lGeoDirs):
                     for ii in range(len(self.bods)):
                         self.bods[ii].traslate(dd=dd)
                 myDD=-dd
                 if (isinstance(myDD,list)):
                     myDD=np.array(DD)
-                ROTDEFIlist=[RotDefi(myDD=myDD)]+ROTDEFIlist
+                ROTDEFIlist.append(RotDefi(myDD=myDD))
             if (len(ROTDEFIlist)>0):
-                # add transformation to actual position if:
-                # - $start_tranform directives are used
-                # - USRBINs without ROTPRBIN cards
-                lCreate=lGeoDirs
+                # add transformation to actual position...
+                lCreate=False
+                if ( lGeoDirs and not lCreate ):
+                    # ...if $start_tranform directives are used
+                    myEntry, iEntry = self.ret("TRANSF",myName)
+                    lCreate=myEntry is None
                 if ( not lCreate ):
+                    # ...if USRBINs are present without ROTPRBIN cards
                     for myBin in self.bins:
                         if ( myBin.returnTrasf()=="" ):
                             lCreate=True
@@ -1093,6 +1087,10 @@ class Geometry():
                 #   of existing transformation
                 for myTras in self.tras:
                     myTras.AddRotDefis(reversed(ROTDEFIlist),iAdd=0)
+                # - link solid trasformation
+                if (lGeoDirs):
+                    for ii in range(len(self.bods)):
+                        self.bods[ii].linkTransformName(Tname=myName)
         print("...done.")
 
     def rename(self,newName,lNotify=True):
@@ -1531,7 +1529,7 @@ class Geometry():
         print('...done.')
         return Geometry.MergeGeos(newGeom,myGeo,lDebug=lDebug,myTitle=myGeo.title)
 
-def acquireGeometries(fileNames,geoNames=None):
+def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
     '''
     A simple function to parse a series of geometry files and
       store them in a dictionary of geometries.
@@ -1557,11 +1555,19 @@ def acquireGeometries(fileNames,geoNames=None):
         if (geoNames[ii]!=fileNames[ii]):
             print("--> geometry saved in DB as %s;"%(geoNames[ii]))
     print("...acquired %d/%d geometries;"%(len(myGeos),len(fileNames)))
+
+    # make geometries rotatable
+    if (lMakeRotatable):
+        print("making acquired geometries rotatable...")
+        for myProtoName,myProtoGeo in myGeos.items():
+            myProtoGeo.makeBodiesRotatable()
+        print("...done;")
+        
     return myGeos
 
 if (__name__=="__main__"):
     lDebug=False
-    lGeoDirs=False
+    lGeoDirs=True
     # # - manipulate a geometry
     # caloCrysGeo=Geometry.fromInp("caloCrys.inp")
     # myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
@@ -1590,9 +1596,7 @@ if (__name__=="__main__"):
     # - gridded crystals
     #   acquire geometries
     fileNames=[ "caloCrys_02.inp" ] ; geoNames=fileNames
-    myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames);
-    for myProtoName,myProtoGeo in myProtoGeos.items():
-        myProtoGeo.makeBodiesRotatable()
+    myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames,lMakeRotatable=not lGeoDirs);
     cellGrid=grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
     myProtoList=[ "caloCrys_02.inp" for ii in range(len(cellGrid)) ]
     GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lGeoDirs=lGeoDirs,lDebug=lDebug)
