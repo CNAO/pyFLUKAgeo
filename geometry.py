@@ -625,10 +625,13 @@ class Usrbin(GeoObject):
         return newUsrBin
 
     def getUnit(self):
-        return int(abs(float(self.definition[0][20:30]))+1E-4)
+        return float(self.definition[0][20:30])
 
     def setUnit(self,myUnit):
-        self.definition[0]=self.definition[0][0:20]+"% 10.1f"%(myUnit)+self.definition[0][30:]
+        if (self.getUnit()<0):
+            self.definition[0]=self.definition[0][0:20]+"% 10.1f"%(-abs(myUnit))+self.definition[0][30:]
+        else:
+            self.definition[0]=self.definition[0][0:20]+"% 10.1f"%(abs(myUnit))+self.definition[0][30:]
 
     def isSpecialBinning(self):
         binType=int(abs(float(self.definition[0][0:10]))+1E-4)
@@ -1210,9 +1213,9 @@ class Geometry():
         print("...%d original units:"%(len(uniqueUnits)),uniqueUnits)
         if (len(usedUnits)>0):
             print("...units NOT to be used:",usedUnits)
-        currUnits=deepcopy(uniqueUnits)
+        currUnits=[abs(iu) for iu in uniqueUnits]
         for ii in range(len(currUnits)):
-            while (currUnits[ii] in usedUnits):
+            while (currUnits[ii] in [abs(iu) for iu in usedUnits]):
                 currUnits[ii]=currUnits[ii]+1
                 if (currUnits[ii]>99):
                     print("...exceeding max number of supported units!")
