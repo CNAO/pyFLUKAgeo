@@ -8,9 +8,10 @@ from copy import deepcopy
 import myMath
 import grid
 
-StringGlobPrec=1.0E-14
+StringPrec=1.0E-14
 MaxLineLength=132
 LineHeader="%13s"%("")
+cut0s="0"*4
 
 class GeoObject():
     '''
@@ -74,7 +75,7 @@ class Body(GeoObject):
         self.lIsRotatable=True
         self.TransformName=None
 
-    def echo(self,expDigits=None,numDigist=None,prec=StringGlobPrec,maxLen=MaxLineLength,header=LineHeader,lMultiLine=True):
+    def echo(self,expDigits=None,numDigist=None,prec=StringPrec,cut0s=cut0s,maxLen=MaxLineLength,header=LineHeader,lMultiLine=True):
         '''take into account comment'''
         myStr="%-3s %8s"%(self.bType,self.echoName())
         if (self.bType=="PLA"):
@@ -100,7 +101,7 @@ class Body(GeoObject):
         else:
             print("body %s NOT supported yet!"%(self.bType))
             exit(1)
-        myStrings=[myStr]+echoFloats(myFloats,expDigits=expDigits,numDigist=numDigist,prec=prec)
+        myStrings=[myStr]+echoFloats(myFloats,expDigits=expDigits,numDigist=numDigist,prec=prec,cut0s=cut0s)
         myStr=assembleLine(myStrings,maxLen=maxLen,header=header,lMultiLine=lMultiLine)
         if (self.TransformName is not None):
             myStr="$Start_transform -%s\n%s\n$end_transform"%(self.TransformName,myStr)
@@ -403,7 +404,8 @@ class RotDefi(GeoObject):
         self.DD=myDD             # translation [cm] (x,y,z components)
 
     def echo(self,lFree=True,myID=0,myName="",\
-             expDigits=None,numDigist=None,prec=StringGlobPrec,maxLen=MaxLineLength,header=LineHeader,lMultiLine=False):
+             expDigits=None,numDigist=None,prec=StringPrec,cut0s=cut0s,\
+             maxLen=MaxLineLength,header=LineHeader,lMultiLine=False):
         '''echo in FREE format uses an empty space as field separator'''
         if (myID<=0):
             print("...cannot dump a ROT-DEFI card without an index!")
@@ -422,7 +424,7 @@ class RotDefi(GeoObject):
         if (lFree):
             myFloats=[self.phi,self.theta]+list(self.DD)
             myStrings=["ROT-DEFI  %10.1f"%(myIDecho)]+\
-                echoFloats(myFloats,expDigits=expDigits,numDigist=numDigist,prec=prec)+\
+                echoFloats(myFloats,expDigits=expDigits,numDigist=numDigist,prec=prec,cut0s=cut0s)+\
                 [" %-10s"%(myName)]
             return GeoObject.echoComm(self)+ \
                 assembleLine(myStrings,maxLen=maxLen,header=header,lMultiLine=lMultiLine)
@@ -1565,7 +1567,7 @@ def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
         
     return myGeos
 
-def echoFloats(myFloats,expDigits=None,numDigist=None,prec=StringGlobPrec,cut0s="0"*4):
+def echoFloats(myFloats,expDigits=None,numDigist=None,prec=StringPrec,cut0s=cut0s):
     if (expDigits is None): expDigits=22
     if (numDigist is None): numDigist=expDigits-7
     numFmt="%% %d.%dE"%(expDigits,numDigist)
