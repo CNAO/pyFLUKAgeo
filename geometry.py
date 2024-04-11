@@ -624,6 +624,24 @@ class Usrbin(GeoObject):
             exit(1)
         return newUsrBin
 
+    def getUnit(self):
+        return int(abs(float(self.definition[0][20:30]))+1E-4)
+
+    def setUnit(self,myUnit):
+        self.definition[0]=self.definition[0][0:20]+"% 10.1f"%(myUnit)+self.definition[0][30:]
+
+    def isSpecialBinning(self):
+        binType=int(abs(float(self.definition[0][0:10]))+1E-4)
+        return binType==8.0 or binType==18.0
+
+    def getNbins(self):
+        nBins=None
+        if (not self.isSpecialBinning() ):
+            nBins=int(abs(float(self.definition[1][30:40]))+1E-4)*\
+                  int(abs(float(self.definition[1][40:50]))+1E-4)*\
+                  int(abs(float(self.definition[1][50:  ]))+1E-4)
+        return nBins
+
     def assignTrasf(self,trasfName):
         if (len(trasfName)>0):
             self.TransfName=trasfName
@@ -1179,6 +1197,57 @@ class Geometry():
         for myBod in self.bods:
             myBod.makeRotatable(lDebug=lDebug,infL=infL)
 
+    def reAssiginUSRBINunits(self,nMaxBins=None,nUSRBINs=None,usedUnits=None):
+        print("re-assigning USRBIN units...")
+        if (nMaxBins is not None and nUSRBINs is not None):
+            print("Please tell me if I have to re-assign USRBIN units based on:")
+            print("- max number of bins in a unit;")
+            print("- max number of USRBINs in a unit;")
+            exit(1)
+        if (usedUnits is None): usedUnits=[]
+        if (type(usedUnits) is not list): usedUnits=[usedUnits]
+        uniqueUnits=list(set([ myBin.getUnit() for myBin in self.bins ]))
+        print("...%d original units:"%(len(uniqueUnits)),uniqueUnits)
+        if (len(usedUnits)>0):
+            print("...units NOT to be used:",usedUnits)
+        currUnits=deepcopy(uniqueUnits)
+        for ii in range(len(currUnits)):
+            while (currUnits[ii] in usedUnits):
+                currUnits[ii]=currUnits[ii]+1
+                if (currUnits[ii]>99):
+                    print("...exceeding max number of supported units!")
+                    exit(1)
+        myN=[ 0 for ii in range(len(currUnits)) ]
+        if (nMaxBins is not None):
+            nMax=nMaxBins
+        elif(nUSRBINs is not None):
+            nMax=nUSRBINs
+        else:
+            print("Please tell me if I have to re-assign USRBIN units based on:")
+            print("- max number of bins in a unit;")
+            print("- max number of USRBINs in a unit;")
+            exit(1)
+        for myBin in self.bins:
+            iUnit=uniqueUnits.index(myBin.getUnit())
+            if (nMaxBins is not None):
+                nAdd=myBin.getNbins()
+            elif(nUSRBINs is not None):
+                nAdd=1
+            if (myN[iUnit]+nAdd>nMax):
+                myUnit=currUnits[iUnit]
+                while(myUnit in currUnits or \
+                      myUnit in usedUnits ):
+                    myUnit=myUnit+1
+                    if (myUnit>99):
+                        print("...exceeding max number of supported units!")
+                        exit(1)
+                currUnits[iUnit]=myUnit
+                myN[iUnit]=nAdd
+            else:
+                myN[iUnit]=myN[iUnit]+nAdd
+            myBin.setUnit(currUnits[iUnit])
+        print("...done;")
+
     @staticmethod
     def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,defMat="VACUUM",tmpTitle="Hive for a spherical shell",lWrapBHaround=False,lDebug=True):
         '''
@@ -1670,5 +1739,6 @@ if (__name__=="__main__"):
 
     # - merge geometries
     mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,lDebug=lDebug)
+    mergedGeo.reAssiginUSRBINunits(nMaxBins=35*35*10,usedUnits=26)
     mergedGeo.echo("merged.inp")
     
