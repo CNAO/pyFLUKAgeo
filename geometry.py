@@ -8,9 +8,9 @@ from copy import deepcopy
 import myMath
 import grid
 
-expDigits=18
-numDigist=expDigits-7
-numFmt=" %% %d.%dE"%(expDigits,numDigist)
+StringGlobPrec=1.0E-14
+MaxLineLength=132
+LineHeader="%13s"%("")
 
 class GeoObject():
     '''
@@ -74,37 +74,34 @@ class Body(GeoObject):
         self.lIsRotatable=True
         self.TransformName=None
 
-    def echo(self,numFmt=numFmt):
+    def echo(self,expDigits=None,numDigist=None,prec=StringGlobPrec,maxLen=MaxLineLength,header=LineHeader,lMultiLine=True):
         '''take into account comment'''
         myStr="%-3s %8s"%(self.bType,self.echoName())
         if (self.bType=="PLA"):
-            myStr=myStr+numFmt*(len(self.V)+len(self.P))%( self.V[0], self.V[1], self.V[2], \
-                                                           self.P[0], self.P[1], self.P[2] )
-        elif (self.bType=="YZP"):
-            myStr=myStr+numFmt%( self.P[0] )
+            myFloats=list(self.V)+list(self.P)
+        elif (self.bType=="YZP"): 
+            myFloats=self.P[0]
         elif (self.bType=="XZP"):
-            myStr=myStr+numFmt%( self.P[1] )
+            myFloats=self.P[1]
         elif (self.bType=="XYP"):
-            myStr=myStr+numFmt%( self.P[2] )
+            myFloats=self.P[2]
         elif (self.bType=="SPH"):
-            myStr=myStr+numFmt*(len(self.P)+1)%( self.P[0], self.P[1], self.P[2], self.Rs[0] )
+            myFloats=list(self.P)+[self.Rs[0]]
         elif (self.bType=="TRC"):
-            myStr=myStr+numFmt*(len(self.P)+len(self.V))%( self.P[0],  self.P[1],  self.P[2], \
-                                                           self.V[0],  self.V[1],  self.V[2] ) \
-                       +"\n%12s"%("")+numFmt*(len(self.Rs))%( self.Rs[0], self.Rs[1] )
+            myFloats=list(self.P)+list(self.V)+list(self.Rs)
         elif (self.bType=="RCC"):
-            myStr=myStr+numFmt*(len(self.P)+len(self.V))%( self.P[0],  self.P[1],  self.P[2], \
-                                                           self.V[0],  self.V[1],  self.V[2] ) \
-                       +"\n%12s"%("")+numFmt%( self.Rs[0] )
+            myFloats=list(self.P)+list(self.V)+[self.Rs[0]]
         elif (self.bType=="XCC"):
-            myStr=myStr+numFmt*(2+1)%( self.P[1],  self.P[2],  self.Rs[0] )
+            myFloats=list(self.P[1:])+[self.Rs[0]]
         elif (self.bType=="YCC"):
-            myStr=myStr+numFmt*(2+1)%( self.P[2],  self.P[0],  self.Rs[0] )
+            myFloats=[self.P[2],self.P[0],self.Rs[0]]
         elif (self.bType=="ZCC"):
-            myStr=myStr+numFmt*(2+1)%( self.P[0],  self.P[1],  self.Rs[0] )
+            myFloats=list(self.P[0:-1])+[self.Rs[0]]
         else:
             print("body %s NOT supported yet!"%(self.bType))
             exit(1)
+        myStrings=[myStr]+echoFloats(myFloats,expDigits=expDigits,numDigist=numDigist,prec=prec)
+        myStr=assembleLine(myStrings,maxLen=maxLen,header=header,lMultiLine=lMultiLine)
         if (self.TransformName is not None):
             myStr="$Start_transform -%s\n%s\n$end_transform"%(self.TransformName,myStr)
         return GeoObject.echoComm(self)+myStr
@@ -405,7 +402,8 @@ class RotDefi(GeoObject):
         self.theta=myTh          # azimuth angle [degrees] (FLUKA units)
         self.DD=myDD             # translation [cm] (x,y,z components)
 
-    def echo(self,lFree=True,myID=0,myName="",numFmt=numFmt):
+    def echo(self,lFree=True,myID=0,myName="",\
+             expDigits=None,numDigist=None,prec=StringGlobPrec,maxLen=MaxLineLength,header=LineHeader,lMultiLine=False):
         '''echo in FREE format uses an empty space as field separator'''
         if (myID<=0):
             print("...cannot dump a ROT-DEFI card without an index!")
@@ -422,10 +420,12 @@ class RotDefi(GeoObject):
             if (self.phi!=0.0 or self.theta!=0.0):
                 myIDecho=myIDecho+self.axis
         if (lFree):
+            myFloats=[self.phi,self.theta]+list(self.DD)
+            myStrings=["ROT-DEFI  %10.1f"%(myIDecho)]+\
+                echoFloats(myFloats,expDigits=expDigits,numDigist=numDigist,prec=prec)+\
+                [" %-10s"%(myName)]
             return GeoObject.echoComm(self)+ \
-                "ROT-DEFI  %10.1f"%(myIDecho)+\
-                numFmt*5%(self.phi,self.theta, self.DD[0], self.DD[1], self.DD[2])+\
-                " %-10s"%(myName)
+                assembleLine(myStrings,maxLen=maxLen,header=header,lMultiLine=lMultiLine)
         else:
             return GeoObject.echoComm(self)+ \
                 "ROT-DEFI  %10.1f% 10G% 10G% 10G% 10G% 10G%-10s"\
@@ -689,7 +689,7 @@ class Geometry():
             iEntry=0
         self.tras[iEntry].AddRotDefi(tmpRotDefi)
 
-    def headMe(self,myString,begLine="* \n"+"* "+"="*7*expDigits,endLine="* "+"-"*7*expDigits+"\n* "):
+    def headMe(self,myString,begLine="* \n"+"* "+"="*130,endLine="* "+"-"*130+"\n* "):
         '''
         simple method to head a string to the geometry declaration (bodies,
            regions, assignma, usrbin, rot-defi cards)
@@ -1564,6 +1564,70 @@ def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
         print("...done;")
         
     return myGeos
+
+def echoFloats(myFloats,expDigits=None,numDigist=None,prec=StringGlobPrec,cut0s="0"*4):
+    if (expDigits is None): expDigits=22
+    if (numDigist is None): numDigist=expDigits-7
+    numFmt="%% %d.%dE"%(expDigits,numDigist)
+    if (type(myFloats) is list):
+        floats2convert=myFloats
+    else:
+        floats2convert=[myFloats]
+    myStrs=[]
+    for float2convert in floats2convert:
+        if (abs(float2convert)%1<prec): # integer
+            myStrs.append("% .1f"%(float2convert))
+        else: # actual floating point number
+            myStr=numFmt%(float2convert)
+            data=myStr.split("E")
+            mantissa=data[0]; exponent=data[1]
+            if (cut0s is not None): # truncate numbers if a series of "0" is found
+                if (mantissa.find(cut0s)>-1):
+                    mantissa=mantissa[:mantissa.index(cut0s)]
+            if (exponent=="+00"):
+                exponent=None
+            elif (exponent=="+01"):
+                exponent=None
+                mantissa=mantissa.replace(".","")
+                mantissa=mantissa[0:3]+"."+mantissa[3:]
+            elif (exponent=="+02"):
+                exponent=None
+                mantissa=mantissa.replace(".","")
+                mantissa=mantissa[0:4]+"."+mantissa[4:]
+            elif (exponent=="-01"):
+                exponent=None
+                mantissa=mantissa.replace(".","")
+                mantissa=mantissa[0]+"0."+mantissa[1:]
+            elif (exponent=="-02"):
+                exponent=None
+                mantissa=mantissa.replace(".","")
+                mantissa=mantissa[0]+"0.0"+mantissa[1:]
+            if (mantissa=="-0.0"): mantissa=" 0.0"
+            if (exponent is None):
+                myStr=mantissa
+            else:
+                myStr="%sE%s"%(mantissa,exponent)
+            myStrs.append(myStr)
+    return myStrs
+
+def assembleLine(myStrings,maxLen=MaxLineLength,header=LineHeader,lMultiLine=True):
+    if (len(myStrings)==0):
+        finStr=""
+    else:
+        finStr=myStrings[0]; curLen=len(finStr)
+        for myStr in myStrings[1:]:
+            if (curLen+len(myStr)+1>=maxLen):
+                if (lMultiLine):
+                    finStr=finStr+"\n"+header+myStr
+                    curLen=len(header+myStr)
+                else:
+                    print("Cannot prepare a line longer than %d chars!"%(maxLen))
+                    print("%s %s"%(finStr,myStr))
+                    exit(1)
+            else:
+                finStr=finStr+" "+myStr
+                curLen=curLen+len(myStr)+1
+    return finStr
 
 if (__name__=="__main__"):
     lDebug=False
