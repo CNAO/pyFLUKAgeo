@@ -573,13 +573,15 @@ class Usrbin(GeoObject):
     '''
     A very basic class for handling USRBIN cards.
     For the time being, there is support only for:
-    - parsing/echoing;
+    - parsing/echoing, ALWAYS in FIXED format;
     - always 2 cards to fully define scoring;
     - a single ROTPRBIN card per transformation (1:1 mapping between ROTPRBIN and
       USRBIN cards); the mapping to the transformation is ALWAYS name-based;
       the ROTPRBIN card always PRECEEDs the respective USRBIN card;
     - NO comments between USRBIN cards defining the same scoring detector;
-    - parsing ALWAYS in FIXED format;
+    - manipulation of unit, extremes and numbers of bins; nevertheless,
+      NO check is performed between the requested axis for manipulation and
+      the type of mesh;
     '''
     def __init__(self,myName="",myComment=""):
         GeoObject.__init__(self,myName=myName,myComment=myComment)
@@ -626,24 +628,141 @@ class Usrbin(GeoObject):
 
     def getUnit(self):
         return float(self.definition[0][20:30])
-
-    def setUnit(self,myUnit):
+    def setUnit(self,myUnit,myFmt="% 10.1f"):
         if (self.getUnit()<0):
-            self.definition[0]=self.definition[0][0:20]+"% 10.1f"%(-abs(myUnit))+self.definition[0][30:]
+            self.definition[0]=self.definition[0][0:20]+myFmt%(-abs(myUnit))+self.definition[0][30:]
         else:
-            self.definition[0]=self.definition[0][0:20]+"% 10.1f"%(abs(myUnit))+self.definition[0][30:]
+            self.definition[0]=self.definition[0][0:20]+myFmt%( abs(myUnit))+self.definition[0][30:]
 
     def isSpecialBinning(self):
         binType=int(abs(float(self.definition[0][0:10]))+1E-4)
-        return binType==8.0 or binType==18.0
+        return binType==2.0 or binType==12.0 or binType==8.0 or binType==18.0
 
-    def getNbins(self):
+    def getNbins(self,axes="all"):
         nBins=None
         if (not self.isSpecialBinning() ):
-            nBins=int(abs(float(self.definition[1][30:40]))+1E-4)*\
-                  int(abs(float(self.definition[1][40:50]))+1E-4)*\
-                  int(abs(float(self.definition[1][50:  ]))+1E-4)
+            if (isinstance(axes,list)):
+                nBins=1
+                for myAx in axes:
+                    nBins=nBins*self.getNbins(axes=myAx)
+            elif (isinstance(axes,str)):
+                if (axes.upper()=="ALL"):
+                    nBins=self.getNbins(axes=[1,2,3])
+                elif (axes.upper()=="X"):
+                    nBins=self.getNbins(axes=[1])
+                elif (axes.upper()=="Y"):
+                    nBins=self.getNbins(axes=[2])
+                elif (axes.upper()=="Z"):
+                    nBins=self.getNbins(axes=[3])
+                else:
+                    print("cannot get number of bins on ax specified as %s!"%(axes))
+                    exit(1)
+            elif (1<=axes and axes<=3):
+                nBins=int(abs(float(self.definition[1][30+(axes-1)*10:40+(axes-1)*10]))+1E-4)
+            else:
+                print("cannot get number of bins on ax %d [1:3]!"%(axes))
+                exit(1)
         return nBins
+    def setNbins(self,axes=[3],nBins=[1]):
+        if (isinstance(axes,float)): axes=[axes]
+        elif (isinstance(axes,str)):
+            if (axes.upper()=="ALL"):
+                axes=[1,2,3]
+            else:
+                print("cannot set nBins to ax %s!"%(axes))
+                exit(1)
+        if (isinstance(nBins,float)): nBins=[nBins]
+        if (len(axes)!=len(nBins)):
+            print("len(axes)!=len(nBins)! axes=",axes,"; nBins=",nBins)
+            exit(1)
+        for myN,myAx in zip(nBins,axes):
+            if (myAx<3):
+                self.definition[1]=self.definition[1][0:30+10*(myAx-1)]+\
+                   "% 10.1f"%(myN)+self.definition[1][30+10*myAx:]
+            elif (myAx>0):
+                self.definition[1]=self.definition[1][0:30+10*(myAx-1)]+\
+                   "% 10.1f"%(myN)
+            else:
+                print("cannot set %d bins to axis %d!"%(myN,myAx))
+                exit(1)
+
+    def getExtremes(self,axes=3):
+        myMin=None; myMax=None
+        if (isinstance(axes,list)):
+            myMin=[]; myMax=[]
+            for myAx in axes:
+                tmpMin,tmpMax=self.getExtremes(axes=myAx)
+                myMin.append(tmpMin); myMax.append(tmpMax)
+        elif (isinstance(axes,float)):
+            if (1<=axes and axes<=2):
+                myMax=float(self.definition[0][30+(axes-1)*10:30+axes*10])
+            elif (axes==3):
+                myMax=float(self.definition[0][30+(axes-1)*10:          ])
+            else:
+                print("cannot get extremes of bin on axis %d!"%(axes))
+                exit(1)
+            myMin=float(self.definition[1][ 0+(axes-1)*10:10+axes*10])
+        elif (isinstance(axes,str)):
+            if (axes.upper()=="X"):
+                myMin,myMax=self.getExtremes(self,axes=1)
+            elif (axes.upper()=="Y"):
+                myMin,myMax=self.getExtremes(self,axes=2)
+            elif (axes.upper()=="Z"):
+                myMin,myMax=self.getExtremes(self,axes=3)
+            else:
+                print("cannot get extremes of bin on axis %s!"%(axes))
+                exit(1)
+        return myMin,myMax
+    def setExtremes(self,myMin,myMax,axes=3):
+        if (isinstance(myMin,list) and isinstance(myMax,list) and isinstance(axes,list)):
+            if (len(myMin)!=len(myMax) or len(myMin)!=len(axes)):
+                print("cannot set min=",myMin,",max=",myMax,"axes",axes)
+                exit(1)
+            for tMin,tMax,tAx in zip(myMin,myMax,axes):
+                self.setExtremes(tMin,tMax,axes=tAx)
+        elif (not isinstance(myMin,list) and not isinstance(myMax,list) and not isinstance(axes,list)):
+            myMinStr=echoFloats(myMin,expDigits=10,cut0s="0"*2)[0]
+            while (myMinStr<10):
+                myMinStr=" "+myMinStr
+            myMaxStr=echoFloats(myMax,expDigits=10,cut0s="0"*2)[0]
+            while (myMaxStr<10):
+                myMaxStr=" "+myMaxStr
+            if (isinstance(axes,float)):
+                if (1<=axes and axes<=2):
+                    self.definition[0]=self.definition[0][:30+(axes-1)*10]+\
+                                       myMaxStr+\
+                                       self.definition[0][30+axes*10:]
+                elif (axes==3):
+                    self.definition[0]=self.definition[0][:30+(axes-1)*10]+\
+                                       myMaxStr
+                else:
+                    print("cannot set extremes of bin on axis %d!"%(axes))
+                    exit(1)
+                self.definition[1]=self.definition[1][:(axes-1)*10]+\
+                                   myMinStr+\
+                                   self.definition[1][axes*10:]
+            elif (isinstance(axes,str)):
+                if (axes.upper()=="X"):
+                    self.setExtremes(self,myMin,myMax,axes=1)
+                elif (axes.upper()=="Y"):
+                    self.setExtremes(self,myMin,myMax,axes=2)
+                elif (axes.upper()=="Z"):
+                    self.setExtremes(self,myMin,myMax,axes=3)
+                else:
+                    print("cannot set extremes of bin on axis %s!"%(axes))
+                    exit(1)
+        else:
+            print("mixed arrays!")
+            exit(1)
+
+    def resize(self,newL,axis=3):
+        myMin,myMax=self.getExtremes(axes=axis)
+        myDelta=myMax-myMin
+        if (myDelta>newL):
+            # actually resize
+            myMean=(myMax+myMin)*0.5
+            myStep=myDelta/self.getNbins(axes=axis)
+            newNbins=newL/myStep
 
     def assignTrasf(self,trasfName):
         if (len(trasfName)>0):
@@ -1064,7 +1183,7 @@ class Geometry():
                     if (myTh!=0.0):
                         ROTDEFIlist.append(RotDefi(myAx=myAx,myTh=myTh))
             elif (myTheta is not None):
-                if (type(myTheta) is list and type(myAxis) is list):
+                if (isinstance(myTheta,list) and isinstance(myAxis,list)):
                     if ( len(myTheta)!=len(myAxis) ):
                         print("...inconsistent number of angles (%d) and axes (%d)!"\
                               %(len(myTheta),len(myAxis)))
@@ -1643,7 +1762,7 @@ def echoFloats(myFloats,expDigits=None,numDigist=None,prec=StringPrec,cut0s=cut0
     if (expDigits is None): expDigits=22
     if (numDigist is None): numDigist=expDigits-7
     numFmt="%% %d.%dE"%(expDigits,numDigist)
-    if (type(myFloats) is list):
+    if (isinstance(myFloats,list)):
         floats2convert=myFloats
     else:
         floats2convert=[myFloats]
@@ -1726,11 +1845,11 @@ if (__name__=="__main__"):
     # NT=4      # number of steps (i.e. grid cells)
     # Pmax=2.0  # phi [degs] --> range: -Pmax:Pmax
     # NP=3      # number of steps (i.e. grid cells)
-
+    
     # - hive geometry
     HiveGeo=Geometry.DefineHive_SphericalShell(R,R+dR,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
     # HiveGeo.echo("hive.inp")
-
+    
     # - gridded crystals
     #   acquire geometries
     fileNames=[ "caloCrys_02.inp" ] ; geoNames=fileNames
@@ -1739,9 +1858,8 @@ if (__name__=="__main__"):
     myProtoList=[ "caloCrys_02.inp" for ii in range(len(cellGrid)) ]
     GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lGeoDirs=lGeoDirs,lDebug=lDebug)
     # GridGeo.echo("grid.inp")
-
+    
     # - merge geometries
     mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,lDebug=lDebug)
     mergedGeo.reAssiginUSRBINunits(nMaxBins=35*35*10,usedUnits=26)
     mergedGeo.echo("merged.inp")
-    
