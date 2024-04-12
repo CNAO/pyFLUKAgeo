@@ -1329,10 +1329,11 @@ class Geometry():
         if (usedUnits is None): usedUnits=[]
         if (type(usedUnits) is not list): usedUnits=[usedUnits]
         uniqueUnits=list(set([ myBin.getUnit() for myBin in self.bins ]))
+        uniqueUnits.sort(key=abs)
         print("...%d original units:"%(len(uniqueUnits)),uniqueUnits)
         if (len(usedUnits)>0):
             print("...units NOT to be used:",usedUnits)
-        currUnits=[abs(iu) for iu in uniqueUnits]
+        currUnits=[21+ii for ii in range(len(uniqueUnits))]
         for ii in range(len(currUnits)):
             while (currUnits[ii] in [abs(iu) for iu in usedUnits]):
                 currUnits[ii]=currUnits[ii]+1
@@ -1357,7 +1358,7 @@ class Geometry():
                 nAdd=1
             if (myN[iUnit]+nAdd>nMax):
                 myUnit=currUnits[iUnit]
-                while(myUnit in currUnits or \
+                while(myUnit<=max(currUnits) or \
                       myUnit in usedUnits ):
                     myUnit=myUnit+1
                     if (myUnit>99):
@@ -1861,5 +1862,5 @@ if (__name__=="__main__"):
     
     # - merge geometries
     mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,lDebug=lDebug)
-    mergedGeo.reAssiginUSRBINunits(nMaxBins=35*35*10,usedUnits=26)
+    mergedGeo.reAssiginUSRBINunits(nMaxBins=35*35*5,usedUnits=26)
     mergedGeo.echo("merged.inp")
