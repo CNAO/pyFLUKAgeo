@@ -663,7 +663,7 @@ class Usrbin(GeoObject):
                 print("cannot get number of bins on ax %d [1:3]!"%(axes))
                 exit(1)
         return nBins
-    def setNbins(self,axes=[3],nBins=[1]):
+    def setNbins(self,nBins=[1],axes=[3]):
         if (isinstance(axes,float)): axes=[axes]
         elif (isinstance(axes,str)):
             if (axes.upper()=="ALL"):
@@ -756,13 +756,22 @@ class Usrbin(GeoObject):
             exit(1)
 
     def resize(self,newL,axis=3):
-        myMin,myMax=self.getExtremes(axes=axis)
-        myDelta=myMax-myMin
-        if (myDelta>newL):
-            # actually resize
-            myMean=(myMax+myMin)*0.5
-            myStep=myDelta/self.getNbins(axes=axis)
-            newNbins=newL/myStep
+        if (axis!=3):
+            print("For the time being, it is possible to re-size USRBINs only along the Z-axis!")
+            exit(1)
+        currMin,currMax=self.getExtremes(axes=axis); currNbins=self.getNbins(axes=axis)
+        currDelta=currMax-currMin; currStep=currDelta*1.0/currNbins
+        currMean=(currMax+currMin)*0.5
+        # actually resize
+        newNbins=newL*1.0/currDelta*currNbins
+        if (newNbins%1<0.5):
+            newNbins=int(newNbins)
+        else:
+            newNbins=int(newNbins)+1
+        newMin=currMean-0.5*newNbins*currStep
+        newMax=currMean+0.5*newNbins*currStep
+        self.setExtremes(newMin,newMax,axes=axis)
+        self.setNbins(nBins=newNbins,axes=axis)
 
     def assignTrasf(self,trasfName):
         if (len(trasfName)>0):
