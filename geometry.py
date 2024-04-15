@@ -8,10 +8,17 @@ from copy import deepcopy
 import myMath
 import grid
 
-StringPrec=1.0E-14
+StringPrec=1.0E-14 # prec in determining integer values
 MaxLineLength=132
 LineHeader="%13s"%("")
-cut0s="0"*4
+# FREE format:
+cut0sFREE="0"*4
+expDigitsFREE=22
+numDigitsFREE=expDigitsFREE-7
+# FIXED format:
+cut0sFIXED="0"*2
+expDigitsFIXED=10
+numDigitsFIXED=expDigitsFIXED-7
 
 class GeoObject():
     '''
@@ -75,7 +82,7 @@ class Body(GeoObject):
         self.lIsRotatable=True
         self.TransformName=None
 
-    def echo(self,expDigits=None,numDigist=None,prec=StringPrec,cut0s=cut0s,maxLen=MaxLineLength,header=LineHeader,lMultiLine=True):
+    def echo(self,lFree=True,maxLen=MaxLineLength,header=LineHeader,lMultiLine=True):
         '''take into account comment'''
         myStr="%-3s %8s"%(self.bType,self.echoName())
         if (self.bType=="PLA"):
@@ -101,7 +108,7 @@ class Body(GeoObject):
         else:
             print("body %s NOT supported yet!"%(self.bType))
             exit(1)
-        myStrings=[myStr]+echoFloats(myFloats,expDigits=expDigits,numDigist=numDigist,prec=prec,cut0s=cut0s)
+        myStrings=[myStr]+echoFloats(myFloats,lFree=lFree)
         myStr=assembleLine(myStrings,maxLen=maxLen,header=header,lMultiLine=lMultiLine)
         if (self.TransformName is not None):
             myStr="$Start_transform -%s\n%s\n$end_transform"%(self.TransformName,myStr)
@@ -404,7 +411,6 @@ class RotDefi(GeoObject):
         self.DD=myDD             # translation [cm] (x,y,z components)
 
     def echo(self,lFree=True,myID=0,myName="",\
-             expDigits=None,numDigist=None,prec=StringPrec,cut0s=cut0s,\
              maxLen=MaxLineLength,header=LineHeader,lMultiLine=False):
         '''echo in FREE format uses an empty space as field separator'''
         if (myID<=0):
@@ -421,17 +427,10 @@ class RotDefi(GeoObject):
             myIDecho=myID*1000
             if (self.phi!=0.0 or self.theta!=0.0):
                 myIDecho=myIDecho+self.axis
-        if (lFree):
-            myFloats=[self.phi,self.theta]+list(self.DD)
-            myStrings=["ROT-DEFI  %10.1f"%(myIDecho)]+\
-                echoFloats(myFloats,expDigits=expDigits,numDigist=numDigist,prec=prec,cut0s=cut0s)+\
-                [" %-10s"%(myName)]
-            return GeoObject.echoComm(self)+ \
-                assembleLine(myStrings,maxLen=maxLen,header=header,lMultiLine=lMultiLine)
-        else:
-            return GeoObject.echoComm(self)+ \
-                "ROT-DEFI  %10.1f% 10G% 10G% 10G% 10G% 10G%-10s"\
-                %( myIDecho, self.phi, self.theta, self.DD[0], self.DD[1], self.DD[2], myName)
+        myFloats=[myIDecho,self.phi,self.theta]+list(self.DD)
+        myStrings=["ROT-DEFI  "]+echoFloats(myFloats,lFree=lFree)+[" %-10s"%(myName)]
+        return GeoObject.echoComm(self)+ \
+            assembleLine(myStrings,maxLen=maxLen,header=header,lMultiLine=lMultiLine)
 
     @staticmethod
     def fromBuf(myBuffer,lFree=True):
@@ -573,6 +572,8 @@ class Usrbin(GeoObject):
     '''
     A very basic class for handling USRBIN cards.
     For the time being, there is support only for:
+    - the scoring is not really interpreted: the FLUKA definition is kept in
+      memory, and manipulations are performed on-the-fly;
     - parsing/echoing, ALWAYS in FIXED format;
     - always 2 cards to fully define scoring;
     - a single ROTPRBIN card per transformation (1:1 mapping between ROTPRBIN and
@@ -628,11 +629,13 @@ class Usrbin(GeoObject):
 
     def getUnit(self):
         return float(self.definition[0][20:30])
-    def setUnit(self,myUnit,myFmt="% 10.1f"):
+    def setUnit(self,myUnit,lFree=False):
         if (self.getUnit()<0):
-            self.definition[0]=self.definition[0][0:20]+myFmt%(-abs(myUnit))+self.definition[0][30:]
+            self.definition[0]=self.definition[0][ 0:20]+echoFloats(-abs(myUnit),lFree=lFree)[0]+ \
+                               self.definition[0][30:]
         else:
-            self.definition[0]=self.definition[0][0:20]+myFmt%( abs(myUnit))+self.definition[0][30:]
+            self.definition[0]=self.definition[0][ 0:20]+echoFloats( abs(myUnit),lFree=lFree)[0]+ \
+                               self.definition[0][30:]
 
     def isSpecialBinning(self):
         binType=int(abs(float(self.definition[0][0:10]))+1E-4)
@@ -663,25 +666,25 @@ class Usrbin(GeoObject):
                 print("cannot get number of bins on ax %d [1:3]!"%(axes))
                 exit(1)
         return nBins
-    def setNbins(self,nBins=[1],axes=[3]):
-        if (isinstance(axes,float)): axes=[axes]
+    def setNbins(self,nBins=[1],axes=[3],lFree=False):
+        if (isinstance(axes,float) or isinstance(axes,int)): axes=[axes]
         elif (isinstance(axes,str)):
             if (axes.upper()=="ALL"):
                 axes=[1,2,3]
             else:
                 print("cannot set nBins to ax %s!"%(axes))
                 exit(1)
-        if (isinstance(nBins,float)): nBins=[nBins]
+        if (isinstance(nBins,float) or isinstance(nBins,int)): nBins=[nBins]
         if (len(axes)!=len(nBins)):
             print("len(axes)!=len(nBins)! axes=",axes,"; nBins=",nBins)
             exit(1)
         for myN,myAx in zip(nBins,axes):
             if (myAx<3):
                 self.definition[1]=self.definition[1][0:30+10*(myAx-1)]+\
-                   "% 10.1f"%(myN)+self.definition[1][30+10*myAx:]
+                   echoFloats(myN,lFree=lFree)[0]+self.definition[1][30+10*myAx:]
             elif (myAx>0):
                 self.definition[1]=self.definition[1][0:30+10*(myAx-1)]+\
-                   "% 10.1f"%(myN)
+                   echoFloats(myN,lFree=lFree)[0]
             else:
                 print("cannot set %d bins to axis %d!"%(myN,myAx))
                 exit(1)
@@ -693,7 +696,7 @@ class Usrbin(GeoObject):
             for myAx in axes:
                 tmpMin,tmpMax=self.getExtremes(axes=myAx)
                 myMin.append(tmpMin); myMax.append(tmpMax)
-        elif (isinstance(axes,float)):
+        elif (isinstance(axes,float) or isinstance(axes,int)):
             if (1<=axes and axes<=2):
                 myMax=float(self.definition[0][30+(axes-1)*10:30+axes*10])
             elif (axes==3):
@@ -701,7 +704,7 @@ class Usrbin(GeoObject):
             else:
                 print("cannot get extremes of bin on axis %d!"%(axes))
                 exit(1)
-            myMin=float(self.definition[1][ 0+(axes-1)*10:10+axes*10])
+            myMin=float(self.definition[1][ (axes-1)*10:axes*10])
         elif (isinstance(axes,str)):
             if (axes.upper()=="X"):
                 myMin,myMax=self.getExtremes(self,axes=1)
@@ -713,7 +716,7 @@ class Usrbin(GeoObject):
                 print("cannot get extremes of bin on axis %s!"%(axes))
                 exit(1)
         return myMin,myMax
-    def setExtremes(self,myMin,myMax,axes=3):
+    def setExtremes(self,myMin,myMax,axes=3,lFree=False):
         if (isinstance(myMin,list) and isinstance(myMax,list) and isinstance(axes,list)):
             if (len(myMin)!=len(myMax) or len(myMin)!=len(axes)):
                 print("cannot set min=",myMin,",max=",myMax,"axes",axes)
@@ -721,13 +724,9 @@ class Usrbin(GeoObject):
             for tMin,tMax,tAx in zip(myMin,myMax,axes):
                 self.setExtremes(tMin,tMax,axes=tAx)
         elif (not isinstance(myMin,list) and not isinstance(myMax,list) and not isinstance(axes,list)):
-            myMinStr=echoFloats(myMin,expDigits=10,cut0s="0"*2)[0]
-            while (myMinStr<10):
-                myMinStr=" "+myMinStr
-            myMaxStr=echoFloats(myMax,expDigits=10,cut0s="0"*2)[0]
-            while (myMaxStr<10):
-                myMaxStr=" "+myMaxStr
-            if (isinstance(axes,float)):
+            myMinStr=echoFloats(myMin,lFree=lFree)[0]
+            myMaxStr=echoFloats(myMax,lFree=lFree)[0]
+            if (isinstance(axes,float) or isinstance(axes,int)):
                 if (1<=axes and axes<=2):
                     self.definition[0]=self.definition[0][:30+(axes-1)*10]+\
                                        myMaxStr+\
@@ -855,10 +854,10 @@ class Geometry():
         if (len(self.bins)>0):
             self.bins[0].headMe(actualString)
             
-    def ret(self,what,myName):
+    def ret(self,myKey,myValue):
         lFound=False
-        if (what.upper().startswith("BODSINREG")):
-            if (myName.upper()=="ALL"):
+        if (myKey.upper().startswith("BODSINREG")):
+            if (myValue.upper()=="ALL"):
                 myReg,iReg=self.ret("reg","ALL")
                 myEntry=[]; iEntry=[]
                 for findReg in myReg:
@@ -866,55 +865,63 @@ class Geometry():
                     myEntry=myEntry+tmpEl
                     iEntry=iEntry+tmpInd
             else:
-                myReg,iReg=self.ret("reg",myName)
+                myReg,iReg=self.ret("reg",myValue)
                 myEntry=myReg.retBodiesInDef()
                 iEntry=[]
                 for findBod in myEntry:
                     tmpEl,tmpInd=self.ret("bod",findBod)
                     iEntry.append(tmpInd)
                 lFound=True
-        elif (what.upper().startswith("BOD")):
-            if (myName.upper()=="ALL"):
+        elif (myKey.upper().startswith("BOD")):
+            if (myValue.upper()=="ALL"):
                 myEntry=[ body.echoName() for body in self.bods ]
                 iEntry=[ ii for ii in range(len(self.bods)) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.bods):
-                    if (myEntry.echoName()==myName):
+                    if (myEntry.echoName()==myValue):
                         lFound=True
                         break
-        elif (what.upper().startswith("REG")):
-            if (myName.upper()=="ALL"):
+        elif (myKey.upper().startswith("REG")):
+            if (myValue.upper()=="ALL"):
                 myEntry=[ reg.echoName() for reg in self.regs ]
                 iEntry=[ ii for ii in range(len(self.regs)) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.regs):
-                    if (myEntry.echoName()==myName):
+                    if (myEntry.echoName()==myValue):
                         lFound=True
                         break
-        elif (what.upper().startswith("TRANSF")):
-            if (myName.upper()=="ALL"):
+        elif (myKey.upper().startswith("TRANSF")):
+            if (myValue.upper()=="ALL"):
                 myEntry=[ tras.echoName() for tras in self.tras ]
                 iEntry=[ ii for ii in range(len(self.tras)) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.tras):
-                    if (myEntry.echoName()==myName):
+                    if (myEntry.echoName()==myValue):
                         lFound=True
                         break
-        elif (what.upper().startswith("BIN") or what.upper().startswith("USRBIN")):
-            if (myName.upper()=="ALL"):
+        elif (myKey.upper().startswith("BININUNIT") or myKey.upper().startswith("USRBININUNIT")):
+            myEntry=[] ; iEntry=[]
+            if (isinstance(myValue,float) or isinstance(myValue,int)): myValue=[myValue]
+            for ii,myBin in enumerate(self.bins):
+                if (abs(myBin.getUnit()) in myValue):
+                    myEntry.append(myBin)
+                    iEntry.append(ii)
+                    lFound=True
+        elif (myKey.upper().startswith("BIN") or myKey.upper().startswith("USRBIN")):
+            if (myValue.upper()=="ALL"):
                 myEntry=[ myBin.echoName() for myBin in self.bins ]
                 iEntry=[ ii for ii in range(len(self.bins)) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.bins):
-                    if (myEntry.echoName()==myName):
+                    if (myEntry.echoName()==myValue):
                         lFound=True
                         break
         else:
-            print("%s not recognised! What should I look for in the geometry?"%(what))
+            print("%s not recognised! What should I look for in the geometry?"%(myKey))
             exit(1)
         if (not lFound):
             myEntry=None
@@ -1290,7 +1297,7 @@ class Geometry():
         print("...done.")
 
     def flagRegs(self,whichRegs,rCont,rCent):
-        if (whichRegs is str):
+        if (isinstance(whichRegs,str)):
             if (whichRegs.upper()=="ALL"):
                 regs2mod,iRegs2mod=self.ret("reg","ALL")
             else:
@@ -1304,15 +1311,17 @@ class Geometry():
             outReg,iReg=self.ret("reg",whichReg)
             outReg.initCont(rCont=rCont,rCent=rCent)
 
-    def resizeBodies(self,newL,whichBods):
+    def resizeBodies(self,newL,whichBods="ALL"):
         '''
         input:
         - newL: new length [cm];
-        - whichBods: list of body names to be updated (if infinite)
+        - whichBods: list of body names to be updated (if infinite);
         '''
-        if (whichBods is str):
+        if (isinstance(whichBods,str)):
             if (whichBods.upper()=="ALL"):
                 bods2mod,iBods2mod=self.ret("bod","ALL")
+                if (not isinstance(bods2mod,list)):
+                    bods2mod, iBods2mod = [whichBods], [iBods2mod]
             else:
                 bods2mod=[whichBods]
         else:
@@ -1320,9 +1329,11 @@ class Geometry():
                 bods2mod,iBods2mod=self.ret("bod","ALL")
             else:
                 bods2mod=whichBods
+        print("re-sizing %d bodies..."%(len(bods2mod)))
         for bod2mod in bods2mod:
             whichBod,iBod=self.ret("bod",bod2mod)
             whichBod.resize(newL)
+        print("...done;")
 
     def makeBodiesRotatable(self,lDebug=False,infL=1000.):
         for myBod in self.bods:
@@ -1378,6 +1389,40 @@ class Geometry():
             else:
                 myN[iUnit]=myN[iUnit]+nAdd
             myBin.setUnit(currUnits[iUnit])
+        print("...done;")
+
+    def resizeUsrbins(self,newL,whichUnits=None,axis=3):
+        '''
+        input:
+        - newL: new length [cm];
+        - whichUnits: units of USRBINs to be updated;
+        '''
+        if (whichUnits is None): whichUnits="ALL"
+        if (isinstance(whichUnits,str)):
+            if (whichUnits.upper()=="ALL"):
+                bins2mod,iBins2mod=self.ret("bin","ALL")
+                print("re-sizing ALL USRBINs, i.e. %d ..."%(len(bins2mod)))
+            else:
+                print("Cannot specify USRBIN names for resizing!")
+                exit(1)
+        elif (isinstance(whichUnits,float) or isinstance(whichUnits,int)):
+            bins2mod,iBins2mod=self.ret("BININUNIT",whichUnits)
+            print("re-sizing USRBINs in unit %d, i.e. %d ..."%(whichUnits,len(bins2mod)))
+        elif (isinstance(whichUnits,list)):
+            bins2mod=[]; iBins2mod=[]
+            for whichUnit in whichUnits:
+                tBins2mod,tIBins2mod=self.ret("BININUNIT",whichUnit)
+                print("re-sizing USRBINs in unit %d, i.e. %d ..."%(whichUnit,len(tBins2mod)))
+                if (isinstance(tBins2mod,list)):
+                    bins2mod=bins2mod+tBins2mod
+                else:
+                    bins2mod.append(tBins2mod)
+        else:
+            print("Wrong indication of USRBINs for resizing!")
+            print(whichUnits)
+            exit(1)
+        for bin2mod in bins2mod:
+            bin2mod.resize(newL,axis=3)
         print("...done;")
 
     @staticmethod
@@ -1609,14 +1654,15 @@ class Geometry():
         return Geometry.appendGeometries(myGeos)
 
     @staticmethod
-    def MergeGeos(hiveGeo,gridGeo,lDebug=True,myTitle=None,prec=0.001):
+    def MergeGeos(hiveGeo,gridGeo,lDebug=True,myTitle=None,prec=0.001,resBins="ALL"):
         '''
         This method merges one FLUKA geometry onto another one.
 
         input parameters:
         - hiveGeo: Geometry instance of the hive;
-        - gridGeo: Geometry instance of the grid of objects.
-        - prec: precision of identification of points proximity [cm]
+        - gridGeo: Geometry instance of the grid of objects;
+        - prec: precision of identification of points proximity [cm];
+        - resBins: list of units of USRBINs that should be resized;
 
         The two geometries must not have common names - no check is performed
           for the time being.
@@ -1653,10 +1699,10 @@ class Geometry():
             for jRhg in iRhg:
                 for jRgg in iRgg:
                     if (np.linalg.norm(gridGeo.regs[jRgg].rCent-hiveGeo.regs[jRhg].rCent)<prec):
-                        # resize infinite bodies
+                        # resize infinite bodies and USRBINs
                         newL=hiveGeo.regs[jRhg].rMaxLen
-                        whichBods=gridGeo.regs[jRgg].retBodiesInDef()
-                        gridGeo.resizeBodies(newL,whichBods=whichBods)
+                        gridGeo.resizeBodies(newL)
+                        gridGeo.resizeUsrbins(newL,whichUnits=resBins)
                         # actually merge
                         gridGeo.regs[jRgg].merge(hiveGeo.regs[jRhg])
                         if (hiveGeo.regs[jRhg].echoName() not in removeRegs):
@@ -1768,10 +1814,16 @@ def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
         
     return myGeos
 
-def echoFloats(myFloats,expDigits=None,numDigist=None,prec=StringPrec,cut0s=cut0s):
-    if (expDigits is None): expDigits=22
-    if (numDigist is None): numDigist=expDigits-7
-    numFmt="%% %d.%dE"%(expDigits,numDigist)
+def echoFloats(myFloats,expDigits=None,numDigits=None,prec=StringPrec,cut0s=None,lFree=True):
+    if (lFree):
+        if (expDigits is None): expDigits=expDigitsFREE
+        if (numDigits is None): numDigits=numDigitsFREE
+        if (cut0s is None): cut0s=cut0sFREE
+    else:
+        if (expDigits is None): expDigits=expDigitsFIXED
+        if (numDigits is None): numDigits=numDigitsFIXED
+        if (cut0s is None): cut0s=cut0sFIXED
+    numFmt="%% %d.%dE"%(expDigits,numDigits)
     if (isinstance(myFloats,list)):
         floats2convert=myFloats
     else:
@@ -1779,7 +1831,7 @@ def echoFloats(myFloats,expDigits=None,numDigist=None,prec=StringPrec,cut0s=cut0
     myStrs=[]
     for float2convert in floats2convert:
         if (abs(float2convert)%1<prec): # integer
-            myStrs.append("% .1f"%(float2convert))
+            myStr="% .1f"%(float2convert)
         else: # actual floating point number
             myStr=numFmt%(float2convert)
             data=myStr.split("E")
@@ -1810,7 +1862,10 @@ def echoFloats(myFloats,expDigits=None,numDigist=None,prec=StringPrec,cut0s=cut0
                 myStr=mantissa
             else:
                 myStr="%sE%s"%(mantissa,exponent)
-            myStrs.append(myStr)
+        if (not lFree):
+            if (len(myStr)<expDigits):
+                myStr=" "*(expDigits-len(myStr))+myStr
+        myStrs.append(myStr)
     return myStrs
 
 def assembleLine(myStrings,maxLen=MaxLineLength,header=LineHeader,lMultiLine=True):
@@ -1834,7 +1889,7 @@ def assembleLine(myStrings,maxLen=MaxLineLength,header=LineHeader,lMultiLine=Tru
 
 if (__name__=="__main__"):
     lDebug=False
-    lGeoDirs=True
+    lGeoDirs=False
     # # - manipulate a geometry
     # caloCrysGeo=Geometry.fromInp("caloCrys.inp")
     # myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
@@ -1870,6 +1925,6 @@ if (__name__=="__main__"):
     # GridGeo.echo("grid.inp")
     
     # - merge geometries
-    mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,lDebug=lDebug)
-    mergedGeo.reAssiginUSRBINunits(nMaxBins=35*35*5,usedUnits=26)
+    mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,lDebug=lDebug,resBins=25)
+    mergedGeo.reAssiginUSRBINunits(nMaxBins=35*35*5000,usedUnits=26)
     mergedGeo.echo("merged.inp")
