@@ -25,6 +25,8 @@ class Geometry():
                 found before or along the region declaration;
       . rot-defi: commented lines are considered always before the rot-defi card;
       . usrbin: commented lines are considered always before the URSBIN card;
+    - #define vars used only at parsing level, i.e. they are not stored
+      in the parsed geometry;
     '''
     def __init__(self):
         self.bods=[]
@@ -167,18 +169,46 @@ class Geometry():
         FREE format used only for parsing ROT-DEFI cards (blank space as separator)!
         '''
         newGeom=Geometry()
+        defineFlags=[]
         print("parsing file %s..."%(myInpName))
         ff=open(myInpName,'r')
-        lRead=0
+        iRead=0
         lFree=False
+        lReads=[True]
         tmpBuf=""
         regBuf=""
         for tmpLine in ff.readlines():
+
+            # PRE-PROCESSOR
+            if (tmpLine.startswith("#define")):
+                data=tmpLine.split()
+                if (len(data)>2):
+                    print("...cannot handle define vars with numerical value, only booleans!")
+                    print(tmpLine)
+                    exit(1)
+                if (data[1] not in defineFlags):
+                    defineFlags.append(data[1])
+                continue
+            elif (tmpLine.startswith("#if")):
+                data=tmpLine.split()
+                lReads.append(data[1] in defineFlags)
+                continue
+            elif (tmpLine.startswith("#elif")):
+                data=tmpLine.split()
+                lReads[-1]=(data[1] in defineFlags)
+                continue
+            elif (tmpLine.startswith("#else")):
+                lReads[-1]=not lReads[-1]
+                continue
+            elif (tmpLine.startswith("#end")):
+                lReads.pop()
+                continue
+            if (not all(lReads)): continue
             
             # OUTSIDE GEOBEGIN-GEOEND
-            if (lRead==0):
+            if (iRead==0):
                 if (tmpLine.startswith("GEOBEGIN")):
-                    lRead=1
+                    iRead=1
                 elif (tmpLine.startswith("ASSIGNMA")):
                     newGeom.assignma(tmpLine)
                     tmpBuf="" # flush buffer
@@ -204,16 +234,16 @@ class Geometry():
                     tmpBuf="" # flush buffer
                     
             # INSIDE GEOBEGIN-GEOEND
-            elif (lRead==1):
+            elif (iRead==1):
                 # title after GEOBEGIN
                 newGeom.title=tmpLine[20:].strip()
-                lRead=2
+                iRead=2
                 tmpBuf="" # flush buffer
-            elif (lRead==2):
+            elif (iRead==2):
                 # definition of FLUKA bodies
                 if (tmpLine.startswith("END")):
                     print("...acquired %d bodies;"%(len(newGeom.bods)))
-                    lRead=3
+                    iRead=3
                     tmpBuf="" # flush buffer
                 elif (tmpLine.startswith("$start")):
                     print("$start* cards NOT supported!")
@@ -224,7 +254,7 @@ class Geometry():
                         # acquire body
                         newGeom.add(Body.fromBuf(tmpBuf.strip()),what="BODY")
                         tmpBuf="" # flush buffer
-            elif (lRead==3):
+            elif (iRead==3):
                 # definition of FLUKA regions
                 if (tmpLine.startswith("END")):
                     if (len(regBuf)>0):
@@ -233,7 +263,7 @@ class Geometry():
                         regBuf="" # flush region def buffer
                     print("...acquired %d regions;"%(len(newGeom.regs)))
                     tmpBuf="" # flush buffer
-                    lRead=0 # ignore LATTICE cards
+                    iRead=0 # ignore LATTICE cards
                 else:
                     if (tmpLine.startswith("*")):
                         # comment line: store in buffer
@@ -1069,7 +1099,7 @@ def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
 
 if (__name__=="__main__"):
     lDebug=False
-    lGeoDirs=True
+    lGeoDirs=False
     # # - manipulate a geometry
     # caloCrysGeo=Geometry.fromInp("caloCrys.inp")
     # myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
