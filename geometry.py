@@ -26,7 +26,8 @@ class Geometry():
       . rot-defi: commented lines are considered always before the rot-defi card;
       . usrbin: commented lines are considered always before the URSBIN card;
     - #define vars used only at parsing level, i.e. they are not stored
-      in the parsed geometry;
+      in the parsed geometry; only boolean #define vars for the time being,
+      but any nesting level is supported;
     '''
     def __init__(self):
         self.bods=[]
