@@ -1555,7 +1555,7 @@ class Geometry():
                 tmpReg.material=defMat
                 tmpReg.addZone('+%-8s -%-8s +%-8s'%(spheres[iR].echoName(),spheres[iR-1].echoName(),thetas[0].echoName()))
                 myCenter=cellGrid.ret(what="POINT",iEl=iHive)
-                rMaxLen=1.1*max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(TTs[0]-90)))
+                rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(TTs[0]-90)))
                 tmpReg.tailMe("* - hive region %4d: SOUTH POLE! R[cm]=[%g:%g], theta[deg]=[-90:%g]"%(
                     iHive,RRs[iR-1],RRs[iR],TTs[0]))
                 tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
@@ -1577,7 +1577,7 @@ class Geometry():
                     pDef='+%-8s -%-8s'%(phis[iP].echoName(),phis[iP-1].echoName())
                     tmpReg.addZone('%s %s %s'%(rDef,tDef,pDef))
                     myCenter=cellGrid.ret(what="POINT",iEl=iHive)
-                    rMaxLen=1.1*max(RRs[iR]-RRs[iR-1],RRs[iR]*np.radians(TTs[iT]-TTs[iT-1]),RRs[iR]*np.radians(PPs[iT]-PPs[iT-1]))
+                    rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*np.radians(TTs[iT]-TTs[iT-1]),RRs[iR]*np.radians(PPs[iT]-PPs[iT-1]))
                     tmpReg.tailMe("* - hive region %4d: R[cm]=[%g:%g], theta[deg]=[%g:%g], phi[deg]=[%g:%g]"%(
                         iHive,RRs[iR-1],RRs[iR],TTs[iT-1],TTs[iT],PPs[iP-1],PPs[iP]))
                     tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
@@ -1590,7 +1590,7 @@ class Geometry():
                 tmpReg.material=defMat
                 tmpReg.addZone('+%-8s -%-8s +%-8s'%(spheres[iR].echoName(),spheres[iR-1].echoName(),thetas[-1].echoName()))
                 myCenter=cellGrid.ret(what="POINT",iEl=iHive)
-                rMaxLen=1.1*max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(90-TTs[-1])))
+                rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(90-TTs[-1])))
                 tmpReg.tailMe("* - hive region %4d: NORTH POLE! R[cm]=[%g:%g], theta[deg]=[%g:90]"%(
                     iHive,RRs[iR-1],RRs[iR],TTs[-1]))
                 tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
@@ -1654,7 +1654,7 @@ class Geometry():
         return Geometry.appendGeometries(myGeos)
 
     @staticmethod
-    def MergeGeos(hiveGeo,gridGeo,lDebug=True,myTitle=None,prec=0.001,resBins="ALL"):
+    def MergeGeos(hiveGeo,gridGeo,lDebug=True,myTitle=None,prec=0.001,enlargeFact=1.1,resBins="ALL"):
         '''
         This method merges one FLUKA geometry onto another one.
 
@@ -1700,7 +1700,7 @@ class Geometry():
                 for jRgg in iRgg:
                     if (np.linalg.norm(gridGeo.regs[jRgg].rCent-hiveGeo.regs[jRhg].rCent)<prec):
                         # resize infinite bodies and USRBINs
-                        newL=hiveGeo.regs[jRhg].rMaxLen
+                        newL=enlargeFact*hiveGeo.regs[jRhg].rMaxLen
                         gridGeo.resizeBodies(newL)
                         gridGeo.resizeUsrbins(newL,whichUnits=resBins)
                         # actually merge
