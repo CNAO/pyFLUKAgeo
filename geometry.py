@@ -544,7 +544,7 @@ class Geometry():
             outReg,iReg=self.ret("reg",whichReg)
             outReg.initCont(rCont=rCont,rCent=rCent)
 
-    def resizeBodies(self,newL,whichBods="ALL"):
+    def resizeBodies(self,newL,whichBods="ALL",lDebug=False):
         '''
         input:
         - newL: new length [cm];
@@ -562,18 +562,18 @@ class Geometry():
                 bods2mod,iBods2mod=self.ret("bod","ALL")
             else:
                 bods2mod=whichBods
-        print("re-sizing %d bodies..."%(len(bods2mod)))
+        if (lDebug): print("re-sizing %d bodies..."%(len(bods2mod)))
         for bod2mod in bods2mod:
             whichBod,iBod=self.ret("bod",bod2mod)
             whichBod.resize(newL)
-        print("...done;")
+        if (lDebug): print("...done;")
 
     def makeBodiesRotatable(self,lDebug=False,infL=1000.):
         for myBod in self.bods:
             myBod.makeRotatable(lDebug=lDebug,infL=infL)
 
-    def reAssiginUSRBINunits(self,nMaxBins=None,nUSRBINs=None,usedUnits=None):
-        print("re-assigning USRBIN units...")
+    def reAssiginUSRBINunits(self,nMaxBins=None,nUSRBINs=None,usedUnits=None,lDebug=False):
+        if (lDebug): print("re-assigning USRBIN units...")
         if (nMaxBins is not None and nUSRBINs is not None):
             print("Please tell me if I have to re-assign USRBIN units based on:")
             print("- max number of bins in a unit;")
@@ -583,9 +583,10 @@ class Geometry():
         if (type(usedUnits) is not list): usedUnits=[usedUnits]
         uniqueUnits=list(set([ myBin.getUnit() for myBin in self.bins ]))
         uniqueUnits.sort(key=abs)
-        print("...%d original units:"%(len(uniqueUnits)),uniqueUnits)
-        if (len(usedUnits)>0):
-            print("...units NOT to be used:",usedUnits)
+        if (lDebug):
+            print("...%d original units:"%(len(uniqueUnits)),uniqueUnits)
+            if (len(usedUnits)>0):
+                print("...units NOT to be used:",usedUnits)
         currUnits=[21+ii for ii in range(len(uniqueUnits))]
         for ii in range(len(currUnits)):
             while (currUnits[ii] in [abs(iu) for iu in usedUnits]):
@@ -622,9 +623,9 @@ class Geometry():
             else:
                 myN[iUnit]=myN[iUnit]+nAdd
             myBin.setUnit(currUnits[iUnit])
-        print("...done;")
+        if (lDebug): print("...done;")
 
-    def resizeUsrbins(self,newL,whichUnits=None,axis=3):
+    def resizeUsrbins(self,newL,whichUnits=None,axis=3,lDebug=False):
         '''
         input:
         - newL: new length [cm];
@@ -634,13 +635,13 @@ class Geometry():
         if (isinstance(whichUnits,str)):
             if (whichUnits.upper()=="ALL"):
                 bins2mod,iBins2mod=self.ret("bin","ALL")
-                print("re-sizing ALL USRBINs, i.e. %d ..."%(len(bins2mod)))
+                if (lDebug): print("re-sizing ALL USRBINs, i.e. %d ..."%(len(bins2mod)))
             else:
                 print("Cannot specify USRBIN names for resizing!")
                 exit(1)
         elif (isinstance(whichUnits,float) or isinstance(whichUnits,int)):
             bins2mod,iBins2mod=self.ret("BININUNIT",whichUnits)
-            print("re-sizing USRBINs in unit %d, i.e. %d ..."%(whichUnits,len(bins2mod)))
+            if (lDebug): print("re-sizing USRBINs in unit %d, i.e. %d ..."%(whichUnits,len(bins2mod)))
         elif (isinstance(whichUnits,list)):
             bins2mod=[]; iBins2mod=[]
             for whichUnit in whichUnits:
@@ -656,7 +657,7 @@ class Geometry():
             exit(1)
         for bin2mod in bins2mod:
             bin2mod.resize(newL,axis=3)
-        print("...done;")
+        if (lDebug): print("...done;")
 
     @staticmethod
     def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,defMat="VACUUM",tmpTitle="Hive for a spherical shell",lWrapBHaround=False,lDebug=True):
@@ -841,7 +842,7 @@ class Geometry():
     @staticmethod
     def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,osRegNames=[],lGeoDirs=False,lDebug=True):
         '''
-        This method defines a FLUKA geometry representing a grid of objects.
+        This method defines a list of FLUKA geometry representing a grid of objects.
 
         input parameters:
         - grid: an instance of a Grid() class, i.e. a list of locations;
@@ -884,7 +885,7 @@ class Geometry():
             # - append clone to list of geometries
             myGeos.append(myGeo)
         # return merged geometry
-        return Geometry.appendGeometries(myGeos)
+        return myGeos
 
     @staticmethod
     def MergeGeos(hiveGeo,gridGeo,lDebug=True,myTitle=None,prec=0.001,enlargeFact=1.1,resBins="ALL"):
@@ -895,6 +896,7 @@ class Geometry():
         - hiveGeo: Geometry instance of the hive;
         - gridGeo: Geometry instance of the grid of objects;
         - prec: precision of identification of points proximity [cm];
+        - enlargeFact: (safety) factor for scaling infinite bodies and USRBINs;
         - resBins: list of units of USRBINs that should be resized;
 
         The two geometries must not have common names - no check is performed
@@ -906,66 +908,84 @@ class Geometry():
           and the respective region in hiveGeo will disappear.
         '''
         print("merging geometries...")
-        iRhg=[ ii for ii,mReg in enumerate(hiveGeo.regs) if mReg.rCont==1 ]
-        cRhg=np.array([ mReg.rCent for ii,mReg in enumerate(hiveGeo.regs) if mReg.rCont==1 ])
-        ucRhg=np.unique(cRhg,axis=0)
-        iRgg=[ ii for ii,mReg in enumerate(gridGeo.regs) if mReg.rCont==-1 ]
-        cRgg=np.array([ mReg.rCent for ii,mReg in enumerate(gridGeo.regs) if mReg.rCont==-1 ])
-        ucRgg=np.unique(cRgg,axis=0)
+        if (isinstance(hiveGeo,Geometry)): hiveGeo=[hiveGeo]
+        if (isinstance(gridGeo,Geometry)): gridGeo=[gridGeo]
+        if (isinstance(enlargeFact,float) or isinstance(enlargeFact,int)):
+            if (enlargeFact<=0): enlargeFact=None
+        # hiveGeo
+        iRhgs=[]; jRhgs=[]; cRhgs=[];
+        for jj,myGeo in enumerate(hiveGeo):
+            iRhgs=iRhgs+[ ii for ii,mReg in enumerate(myGeo.regs) if mReg.rCont==1 ]
+            jRhgs=jRhgs+[ jj for mReg in myGeo.regs if mReg.rCont==1 ]
+            cRhgs=cRhgs+[ mReg.rCent for mReg in myGeo.regs if mReg.rCont==1 ]
+        cRhgs=np.array(cRhgs)
+        ucRhgs=np.unique(cRhgs,axis=0)
+        # gridGeo
+        iRggs=[]; jRggs=[]; cRggs=[];
+        for jj,myGeo in enumerate(gridGeo):
+            iRggs=iRggs+[ ii for ii,mReg in enumerate(myGeo.regs) if mReg.rCont==-1 ]
+            jRggs=jRggs+[ jj for mReg in myGeo.regs if mReg.rCont==-1 ]
+            cRggs=cRggs+[ mReg.rCent for mReg in myGeo.regs if mReg.rCont==-1 ]
+        cRggs=np.array(cRggs)
+        ucRggs=np.unique(cRggs,axis=0)
         if (lDebug):
-            print("...found %d containing regions in hive:"%(len(iRhg)))
-            print("   ...with %d unique centers!"%(len(ucRhg)))
-            print(iRhg)
-            print(cRhg)
-            print(ucRhg)
-            print("...found %d contained/sized regions in grid:"%(len(iRgg)))
-            print("   ...with %d unique centers!"%(len(ucRgg)))
-            print(iRgg)
-            print(cRgg)
-            print(ucRgg)
-        if (len(iRhg)==len(ucRhg)):
+            print("...found %d containing regions in hive:"%(len(iRhgs)))
+            print("   ...with %d unique centers!"%(len(ucRhgs)))
+            print(iRhgs)
+            print(jRhgs)
+            print(cRhgs)
+            print(ucRhgs)
+            print("...found %d contained/sized regions in grid:"%(len(iRggs)))
+            print("   ...with %d unique centers!"%(len(ucRggs)))
+            print(iRggs)
+            print(jRggs)
+            print(cRggs)
+            print(ucRggs)
+        if (len(iRhgs)==len(ucRhgs)):
             # for each location, only one hive region is concerned:
             #   merge each containing hive region into the concerned
             #   grid regions, and then remove the hive region
             # - merge region defs
-            removeRegs=[]
-            for jRhg in iRhg:
-                for jRgg in iRgg:
-                    if (np.linalg.norm(gridGeo.regs[jRgg].rCent-hiveGeo.regs[jRhg].rCent)<prec):
+            removeRegs=[]; jRemoveRegs=[]
+            for iRhg,jRhg in zip(iRhgs,jRhgs):
+                for iRgg,jRgg in zip(iRggs,jRggs):
+                    if (np.linalg.norm(gridGeo[jRgg].regs[iRgg].rCent-hiveGeo[jRhg].regs[iRhg].rCent)<prec):
                         # resize infinite bodies and USRBINs
-                        newL=enlargeFact*hiveGeo.regs[jRhg].rMaxLen
-                        gridGeo.resizeBodies(newL)
-                        gridGeo.resizeUsrbins(newL,whichUnits=resBins)
+                        if (enlargeFact is not None or resBins is not None):
+                            newL=enlargeFact*hiveGeo[jRhg].regs[iRhg].rMaxLen
+                        if (enlargeFact is not None): gridGeo[jRgg].resizeBodies(newL,lDebug=lDebug)
+                        if (resBins is not None): gridGeo[jRgg].resizeUsrbins(newL,whichUnits=resBins,lDebug=lDebug)
                         # actually merge
-                        gridGeo.regs[jRgg].merge(hiveGeo.regs[jRhg])
-                        if (hiveGeo.regs[jRhg].echoName() not in removeRegs):
-                            removeRegs.append(hiveGeo.regs[jRhg].echoName())
+                        gridGeo[jRgg].regs[iRgg].merge(hiveGeo[jRhg].regs[iRhg])
+                        if (hiveGeo[jRhg].regs[iRhg].echoName() not in removeRegs):
+                            removeRegs.append(hiveGeo[jRhg].regs[iRhg].echoName())
+                            jRemoveRegs.append(jRhg)
             # - remove merged regs
-            for removeReg in removeRegs:
-                myReg,iReg=hiveGeo.ret("REG",removeReg)
-                hiveGeo.regs.pop(iReg)
-        elif(len(iRgg)==len(ucRgg)):
+            for removeReg,jRemoveReg in zip(removeRegs,jRemoveRegs):
+                myReg,iReg=hiveGeo[jRemoveReg].ret("REG",removeReg)
+                hiveGeo[jRemoveReg].regs.pop(iReg)
+        elif(len(iRggs)==len(ucRggs)):
             # for each location, only one grid region is concerned:
             #   merge each contained grid region into the concerned
             #   hive regions, and then remove the grid region
             # - merge region defs
-            removeRegs=[]
-            for jRgg in iRgg:
-                for jRhg in iRhg:
-                    if (np.linalg.norm(hiveGeo.regs[jRhg].rCent-gridGeo.regs[jRgg].rCent)<prec):
-                        hiveGeo.regs[jRhg].merge(gridGeo.regs[jRgg])
-                        if (gridGeo.regs[jRgg].echoName() not in removeRegs):
-                            removeRegs.append(gridGeo.regs[jRgg].echoName())
+            removeRegs=[]; jRemoveRegs=[]
+            for iRgg,jRgg in zip(iRggs,jRggs):
+                for iRhg,jRhg in zip(iRhgs,jRhgs):
+                    if (np.linalg.norm(gridGeo[jRgg].regs[iRgg].rCent-hiveGeo[jRhg].regs[iRhg].rCent)<prec):
+                        hiveGeo[jRhg].regs[iRhg].merge(gridGeo[jRgg].regs[iRgg])
+                        if (gridGeo[jRgg].regs[iRgg].echoName() not in removeRegs):
+                            removeRegs.append(gridGeo[jRgg].regs[iRgg].echoName())
+                            jRemoveRegs.append(jRgg)
             # - remove merged regs
             for removeReg in removeRegs:
-                myReg,iReg=gridGeo.ret("REG",removeReg)
-                gridGeo.regs.pop(iReg)
+                myReg,iReg=gridGeo[jRemoveReg].ret("REG",removeReg)
+                gridGeo[jRemoveReg].regs.pop(iReg)
         else:
             print("...cannot merge more than a region of the hive and more than a region of the grid for a single location!")
             exit(1)
-        print("...done.")
             
-        return Geometry.appendGeometries([hiveGeo,gridGeo],myTitle=myTitle)
+        return Geometry.appendGeometries(hiveGeo+gridGeo,myTitle=myTitle)
 
     @staticmethod
     def WrapBH_Sphere(myGeo,Rmin,Rmax,defMat="VACUUM",lDebug=True):
@@ -1049,7 +1069,7 @@ def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
 
 if (__name__=="__main__"):
     lDebug=False
-    lGeoDirs=False
+    lGeoDirs=True
     # # - manipulate a geometry
     # caloCrysGeo=Geometry.fromInp("caloCrys.inp")
     # myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
@@ -1082,7 +1102,8 @@ if (__name__=="__main__"):
     cellGrid=grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
     myProtoList=[ "caloCrys_02.inp" for ii in range(len(cellGrid)) ]
     GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lGeoDirs=lGeoDirs,lDebug=lDebug)
-    # GridGeo.echo("grid.inp")
+    
+    (Geometry.appendGeometries(GridGeo)).echo("grid.inp")
     
     # - merge geometries
     mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,lDebug=lDebug,resBins=25)
