@@ -94,11 +94,13 @@ class Grid:
     '''
     def __init__(self,sType=None):
         self.locs=[] # list of Locations
-        if (sType is not None):
-            if (sType.upper()!="SPHERE"):
-                print("Grid.__init__(): cannot create a hive of type %s!"%(\
-                    hType))
-                exit(1)
+        if (sType is None):
+            print("Grid.__init__(): which type of Grid? got None!")
+            exit(1)
+        if (sType.upper()!="SPHERE"):
+            print("Grid.__init__(): cannot create a hive of type %s!"%(\
+                hType))
+            exit(1)
         self.sType=sType
 
     def __len__(self):
@@ -221,11 +223,13 @@ class Hive:
       actual hives are implemented as child classes.
     '''
     def __init__(self,hType=None):
-        if (hType is not None):
-            if (hType.upper()!="SPHERE"):
-                print("Hive.__init__(): cannot create a hive of type %s!"%(\
-                    hType))
-                exit(1)
+        if (hType is None):
+            print("Hive.__init__(): which type of Hive? got None!")
+            exit(1)
+        if (hType.upper()!="SPHERE"):
+            print("Hive.__init__(): cannot create a hive of type %s!"%(\
+                hType))
+            exit(1)
         self.hType=hType
 
 class SphericalHive(Hive):

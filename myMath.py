@@ -3,7 +3,7 @@
 # python version: >= 3.8.10;
 
 import numpy as np
-import copy
+from copy import deepcopy
 
 class Matrix:
     '''
@@ -40,7 +40,7 @@ class Matrix:
             print("cannot multiply a %dx%d matrix times a %dx%d matrix"%\
                   (self.nDim,self.nDim,RMat.nDim,RMat.nDim))
             exit(1)
-        newMat=copy.deepcopy(self) # preserve original class in daughter classes
+        newMat=deepcopy(self) # preserve original class in daughter classes
         for ii in range(self.nDim):
             for jj in range(self.nDim):
                 newMat[ii,jj]=sum([ self[ii,kk]*RMat[kk,jj]\
@@ -66,7 +66,7 @@ class Matrix:
 
     def mulSca(self,mySca):
         'method to multiply a squared matrix by an array'
-        newMat=copy.deepcopy(self) # preserve original class in daughter classes
+        newMat=deepcopy(self) # preserve original class in daughter classes
         for ii in range(self.nDim):
             for jj in range(self.nDim):
                 newMat[ii,jj]=self[ii,jj]*mySca
@@ -96,7 +96,7 @@ class Matrix:
 
     def MinMat(self):
         'calculate matrix of minors'
-        newMat=copy.deepcopy(self) # preserve original class in daughter classes
+        newMat=deepcopy(self) # preserve original class in daughter classes
         for ii in range(self.nDim):
             for jj in range(self.nDim):
                 newMat[ii,jj]=self.Minor(ii,jj).det()
@@ -104,7 +104,7 @@ class Matrix:
 
     def CofactMat(self):
         'calculate matrix of co-factors'
-        newMat=copy.deepcopy(self) # preserve original class in daughter classes
+        newMat=deepcopy(self) # preserve original class in daughter classes
         for ii in range(self.nDim):
             for jj in range(self.nDim):
                 if ((ii+jj)%2==1):
@@ -113,7 +113,7 @@ class Matrix:
 
     def AdjugateMat(self):
         'calculate adjugate matrix, i.e. the transposed'
-        newMat=copy.deepcopy(self) # preserve original class in daughter classes
+        newMat=deepcopy(self) # preserve original class in daughter classes
         for ii in range(self.nDim):
             for jj in range(self.nDim):
                 newMat[ii,jj]=self[jj,ii]
@@ -134,7 +134,7 @@ class Matrix:
         invert the matrix - based on:
         https://www.mathsisfun.com/algebra/matrix-inverse-minors-cofactors-adjugate.html
         '''
-        newMat=copy.deepcopy(self) # preserve original class in daughter classes
+        newMat=deepcopy(self) # preserve original class in daughter classes
         newMat=newMat.MinMat()
         newMat=newMat.CofactMat()
         newMat=newMat.AdjugateMat()

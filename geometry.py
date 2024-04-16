@@ -5,521 +5,12 @@
 import numpy as np
 from copy import deepcopy
 
-import myMath
 import grid
+from body import Body
+from region import Region
+from transformation import RotDefi, Transformation
+from scorings import Usrbin
 
-class GeoObject():
-    '''
-    A very basic object, implementing simply a name and a comment.
-    This object is supposed to collect all the stuff concerning
-      handling of names and modification of comments of instances
-      of the other classes;
-    '''
-
-    def __init__(self,myName="",myComment=""):
-        self.name=myName
-        self.comment=myComment
-
-    def rename(self,newName,lNotify=True):
-        'change instance name'
-        if (lNotify):
-            self.tailMe("* NAME CHANGE: FROM %s TO %s"%(self.name,newName))
-        self.name=newName
-
-    def headMe(self,myString):
-        'head a string to the comment'
-        if (len(self.comment)>0):
-            self.comment=myString+"\n"+self.comment
-        else:
-            self.comment=myString
-            
-    def tailMe(self,myString):
-        'tail a string to the comment'
-        if (len(self.comment)>0):
-            self.comment=self.comment+"\n"+myString
-        else:
-            self.comment=myString
-                
-    def echoComm(self):
-        myBuf=""
-        if (len(self.comment)>0):
-            myBuf=self.comment+"\n"
-        return myBuf
-
-    def echoName(self):
-        return self.name
-            
-class Body(GeoObject):
-    '''
-    - supported bodies: planes, spheres, and TRCs, nothing else for the time being;
-    - body definition on ONE line only, and always starts at col 1;
-    - support only for preceding comments, NO comments headed by "!" or after
-      body definition;
-    - no support for $start_* cards;
-    '''
-
-    def __init__(self,myName="",myComment=""):
-        '''
-        default body is a FLUKA PLA
-        '''
-        GeoObject.__init__(self,myName=myName,myComment=myComment)
-        self.bType="PLA"
-        self.P=np.zeros(3)
-        self.V=np.array([0.0,0.0,1.0])
-        self.Rs=np.zeros(2)
-
-    def echo(self,numFmt=" % 18.11E"):
-        '''take into account comment'''
-        myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
-        if (self.bType=="PLA"):
-            myStr=myStr+numFmt*(len(self.V)+len(self.P))%( self.V[0], self.V[1], self.V[2], \
-                                                           self.P[0], self.P[1], self.P[2] )
-        elif (self.bType=="SPH"):
-            myStr=myStr+numFmt*(len(self.P)+1)%( self.P[0], self.P[1], self.P[2], self.Rs[0] )
-        elif (self.bType=="TRC"):
-            myStr=myStr+numFmt*(len(self.P)+len(self.V))%( self.P[0],  self.P[1],  self.P[2], \
-                                                           self.V[0],  self.V[1],  self.V[2] ) \
-                       +"\n%12s"%("")+numFmt*(len(self.Rs))%( self.Rs[0], self.Rs[1] )
-        elif (self.bType=="RCC"):
-            myStr=myStr+numFmt*(len(self.P)+len(self.V))%( self.P[0],  self.P[1],  self.P[2], \
-                                                           self.V[0],  self.V[1],  self.V[2] ) \
-                       +"\n%12s"%("")+numFmt%( self.Rs[0] )
-        else:
-            print("body %s NOT supported yet!"%(self.bType))
-            exit(1)
-        return myStr
-
-    @staticmethod
-    def fromBuf(tmpLines):
-        newBody=Body()
-        for tmpLine in tmpLines.splitlines():
-            data=tmpLine.split()
-            if (data[0]=="PLA"):
-                newBody.bType="PLA"
-                newBody.rename(data[1],lNotify=False)
-                newBody.V=np.array(data[2:5]).astype(float)
-                newBody.P=np.array(data[5:8]).astype(float)
-            elif (data[0]=="YZP"):
-                newBody.bType="PLA"
-                newBody.rename(data[1],lNotify=False)
-                newBody.V=np.array([1.0,0.0,0.0])
-                newBody.P[0]=float(data[2])
-            elif (data[0]=="XZP"):
-                newBody.bType="PLA"
-                newBody.rename(data[1],lNotify=False)
-                newBody.V=np.array([0.0,1.0,0.0])
-                newBody.P[1]=float(data[2])
-            elif (data[0]=="XYP"):
-                newBody.bType="PLA"
-                newBody.rename(data[1],lNotify=False)
-                newBody.V=np.array([0.0,0.0,1.0])
-                newBody.P[2]=float(data[2])
-            elif (data[0]=="SPH"):
-                newBody.bType="SPH"
-                newBody.rename(data[1],lNotify=False)
-                newBody.P=np.array(data[2:5]).astype(float)
-                newBody.Rs[0]=float(data[5])
-            elif (data[0]=="TRC"):
-                newBody.bType="TRC"
-                newBody.rename(data[1],lNotify=False)
-                newBody.P=np.array(data[2:5]).astype(float)
-                newBody.V=np.array(data[5:8]).astype(float)
-                newBody.Rs=np.array(data[8:]).astype(float)
-            elif (data[0]=="XCC"):
-                newBody.bType="RCC"
-                newBody.rename(data[1],lNotify=False)
-                newBody.P=np.array([-1E+8]+data[2:4]).astype(float)
-                newBody.V=np.array([2.0E+8,0.0,0.0]).astype(float)
-                newBody.Rs[0]=float(data[4])
-            elif (data[0]=="YCC"):
-                newBody.bType="RCC"
-                newBody.rename(data[1],lNotify=False)
-                newBody.P=np.array([data[3],-1E+8,data[2]]).astype(float)
-                newBody.V=np.array([0.0,2.0E+8,0.0]).astype(float)
-                newBody.Rs[0]=float(data[4])
-            elif (data[0]=="ZCC"):
-                newBody.bType="RCC"
-                newBody.rename(data[1],lNotify=False)
-                newBody.P=np.array(data[2:4]+[-1E+8]).astype(float)
-                newBody.V=np.array([0.0,0.0,2.0E+8]).astype(float)
-                newBody.Rs[0]=float(data[4])
-            elif (tmpLine.startswith("*")):
-                newBody.tailMe(tmpLine)
-            else:
-                print("body %s NOT supported yet!"%(data[0]))
-                exit(1)
-        return newBody
-
-    def traslate(self,dd=None):
-        if (dd is not None):
-            self.P=self.P+dd
-        else:
-            print("please provide me with a 3D traslation array!")
-            exit(1)
-                
-    def rotate(self,myMat=None,myTheta=None,myAxis=3,lDegs=True,lDebug=False):
-        if (myMat is not None):
-            self.P=myMat.mulArr(self.P,lDebug=lDebug)
-            self.V=myMat.mulArr(self.V,lDebug=lDebug)
-        elif (myTheta is not None):
-            if (myAxis is None):
-                print("you must specify a rotation axis together with an angle!")
-                exit(1)
-            else:
-                myMat=myMath.RotMat(myAng=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
-                self.rotate(myMat=myMat,myTheta=None,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
-                
-class Region(GeoObject):
-    '''
-    - no parsing/splitting of zones;
-    - support only for preceding comments or commented lines between region
-      definition lines, NO comments headed by !
-    - a region definition always starts at column 1;
-    - no check of length of lines for region definition;
-    - no support for LATTICE;
-    - ASSIGNMA cards: only 1:1 material:region assignment, NO material
-      assignment for decay radiation simulation, NO magnetic/electric fields;
-    '''
-
-    def __init__(self,myName="",myComment=""):
-        GeoObject.__init__(self,myName=myName,myComment=myComment)
-        self.neigh=5
-        self.definition=""
-        self.material="BLACKHOLE"
-        # additional fields
-        self.initCont()
-
-    def initCont(self,rCont=0,rCent=np.array([0.0,0.0,0.0])):
-        self.rCont=rCont # containment indicator (1 per region):
-                         # -1: region to be contained into/sized by another one
-                         #  0: regular region (neither contains nor it is contained)
-                         #  1: cell region (it contains another region)
-        self.rCent=rCent # central point of one or more region (3D array)
-
-    @staticmethod
-    def fromBuf(myBuffer):
-        newReg=Region()
-        lHeadParsed=False
-        for tmpLine in myBuffer.splitlines():
-            if (not lHeadParsed):
-                if (tmpLine.startswith("*")):
-                    newReg.tailMe(tmpLine)
-                else:
-                    data=tmpLine.split()
-                    newReg.rename(data[0],lNotify=False)
-                    newReg.neigh=float(data[1])
-                    newReg.definition=tmpLine
-                    # remove region name and number of neighbour regions from
-                    #       definition
-                    newReg.definition=newReg.definition.replace(data[0],"",1)
-                    newReg.definition=newReg.definition.replace(data[1],"",1)
-                    # remove heading/trailing empty spaces
-                    newReg.definition=newReg.definition.strip() 
-                    lHeadParsed=True
-            else:
-                newReg.definition=newReg.definition+"\n"+tmpLine
-        return newReg
-        
-    def BodyNameReplaceInDef(self,oldNames,newNames):
-        'query-replace body names in region definition'
-        for oName,nName in zip(oldNames,newNames):
-            self.definition=self.definition.replace(oName,nName)
-
-    def assignMat(self,myMaterial):
-        self.material=myMaterial
-
-    def addZone(self,myDef,nSpace=16):
-        if (self.isNonEmpty()):
-            if ( '|' not in self.definition ):
-                # if more than a zone, be sure that the first zone has the "|" preceeding char,
-                #    just for the sake of proper alignment
-                self.definition="| %s"%(self.definition)
-            self.definition=self.definition+'\n'+" "*nSpace+'| %s'%(myDef)
-        else:
-            self.definition=myDef
-
-    def isNonEmpty(self):
-        return len(self.definition)>0
-        
-    def echo(self,lMat=False):
-        '''take into account comment'''
-        if (lMat):
-            # echo ASSIGNMA card
-            return GeoObject.echoComm(self)+"ASSIGNMA  %10s%10s" % ( self.material, self.echoName() )
-        else:
-            return GeoObject.echoComm(self)+"%-8s   %4d %s" % \
-                ( self.echoName(), self.neigh, self.definition )
-
-    def merge(self,newReg,spacing=" "*16):
-        # warn user in comment
-        self.tailMe("* --> merged with region %s <--"%(newReg.echoName()))
-        # merge comments
-        if (len(newReg.comment)>0):
-            self.tailMe(newReg.comment)
-        # merge definitions
-        mergedDef=""
-        newRegZones=newReg.definition.split("|")
-        myRegZones=self.definition.split("|")
-        lFirst=True
-        for ii,myRegZone in enumerate(myRegZones,1):
-            sMyRegZone=myRegZone.strip()
-            if (len(sMyRegZone)>0):
-                for jj,newRegZone in enumerate(newRegZones,1):
-                    sNewRegZone=newRegZone.strip()
-                    if (len(sNewRegZone)>0):
-                        tmpComment="* merging zone %s:%d into %s:%d"%(\
-                                newReg.echoName(),jj,self.echoName(),ii)
-                        if (lFirst):
-                            self.tailMe(tmpComment)
-                            mergedDef="| %s %s"%(sMyRegZone,sNewRegZone)
-                            lFirst=False
-                        else:
-                            mergedDef=mergedDef+"\n%s"%(tmpComment)+"\n%s| %s %s"%(spacing,sMyRegZone,sNewRegZone)
-        self.definition=mergedDef
-        # merge neighbours
-        self.neigh=self.neigh+newReg.neigh
-        # remove any sign of merge labelling
-        self.initCont()
-
-class RotDefi(GeoObject):
-    '''
-    Class handling ROT-DEFI cards.
-    Please have a look also to the Transformation() class: the ROT-DEFI
-       class simply stores infos of a specific rotation/traslation;
-    - echo in FREE format uses an empty space as field separator;
-    - parsing in FREE format expects an empty space as field separator;
-    '''
-
-    def __init__(self,myAx=3,myPhi=0.0,myTh=0.0,myDD=np.zeros(3),myComment=""):
-        # mainly for comments, name NOT used!
-        GeoObject.__init__(self,myComment=myComment)
-        self.axis=myAx           # FLUKA coding: 1=x, 2=y, 3=z
-        self.phi=myPhi           # polar angle [degrees] (FLUKA units)
-        self.theta=myTh          # azimuth angle [degrees] (FLUKA units)
-        self.DD=myDD             # translation [cm] (x,y,z components)
-
-    def echo(self,lFree=True,myID=0,myName=""):
-        '''echo in FREE format uses an empty space as field separator'''
-        if (myID<=0):
-            print("...cannot dump a ROT-DEFI card without an index!")
-            exit(1)
-        if (len(myName)==0):
-            print("...cannot dump a ROT-DEFI card without a name!")
-            exit(1)
-        if (myID<100):
-            myIDecho=myID
-            if (self.phi!=0.0 or self.theta!=0.0):
-                myIDecho=myIDecho+self.axis*100
-        else:
-            myIDecho=myID*1000
-            if (self.phi!=0.0 or self.theta!=0.0):
-                myIDecho=myIDecho+self.axis
-        if (lFree):
-            return GeoObject.echoComm(self)+ \
-                "ROT-DEFI  %10.1f % 15.8E % 15.8E % 15.8E % 15.8E % 15.8E %-10s"\
-                %( myIDecho, self.phi, self.theta, self.DD[0], self.DD[1], self.DD[2], myName)
-        else:
-            return GeoObject.echoComm(self)+ \
-                "ROT-DEFI  %10.1f% 10G% 10G% 10G% 10G% 10G%-10s"\
-                %( myIDecho, self.phi, self.theta, self.DD[0], self.DD[1], self.DD[2], myName)
-
-    @staticmethod
-    def fromBuf(myBuffer,lFree=True):
-        '''parsing in FREE format expects an empty space as field separator'''
-        newRotDefi=RotDefi()
-        for tmpLine in myBuffer.splitlines():
-            if (tmpLine.startswith("*")):
-                newRotDefi.tailMe(tmpLine.strip())
-            else:
-                # parse data
-                if (lFree):
-                    data=tmpLine.split()
-                    pID=data[1]
-                    phi=data[2]
-                    tht=data[3]
-                    DD=data[4:7]
-                    myName=data[7]
-                else:
-                    pID=tmpLine[10:20].strip()
-                    phi=tmpLine[20:30].strip()
-                    tht=tmpLine[30:40].strip()
-                    DD=[tmpLine[40:50].strip(),tmpLine[50:60].strip(),tmpLine[60:70].strip()]
-                    myName=tmpLine[70:80].strip()
-                # store data
-                pID=float(pID)
-                if (pID>1000):
-                    myID=int(pID/1000)
-                    myAxis=int(pID%1000)
-                else:
-                    myAxis=int(pID/100)
-                    myID=int(pID%100)
-                if (myAxis>0):
-                    newRotDefi.axis=myAxis
-                newRotDefi.phi=float(phi)
-                newRotDefi.theta=float(tht)
-                newRotDefi.DD=np.array([float(myDD) for myDD in DD])
-        return newRotDefi, myID, myName
-
-class Transformation(GeoObject):
-    '''
-    This is the actual class to be used when dealing with ROT-DEFI cards.
-    The class implements an array of ROT-DEFI cards - hence, at least one card.
-    '''
-
-    def __init__(self,myID=0,myName=""):
-        GeoObject.__init__(self,myName=myName) # mainly for names, comments NOT used!
-        self.RotDefis=[] # list of ROT-DEFI cards
-        self.ID=myID
-        
-    def __len__(self):
-        return len(self.RotDefis)
-
-    def __iter__(self):
-        self.current_index=0
-        return self
-    
-    def __next__(self):
-        '''
-        from https://blog.finxter.com/python-__iter__-magic-method/
-        '''
-        if self.current_index < len(self):
-            x = self.RotDefis[self.current_index]
-            self.current_index += 1
-            return x
-        raise StopIteration
-
-    # override methods of GeoObject, since comments are of the single
-    #   ROT-DEFI cards
-    def headMe(self,myString):
-        self.RotDefis[0].headMe(myString)
-    def tailMe(self,myString):
-        self.RotDefis[0].tailMe(myString)
-    def echoComm(self):
-        myComm=""
-        if (len(self.RotDefis)>0):
-            myComm=self.RotDefis[0].echoComm()
-        return myComm
-
-    def AddRotDefi(self,newRotDefi,iAdd=-1,lMoveComment=True):
-        if (iAdd==-1 or iAdd==len(self.RotDefis)):
-            # append ROT-DEFI card to list of ROT-DEFIs
-            self.RotDefis.append(newRotDefi)
-        elif (iAdd==0):
-            # head ROT-DEFI card to list of ROT-DEFIs
-            if (lMoveComment):
-                myComm=self.echoComm().strip()
-                if (len(myComm)>0):
-                    # take care of main comment
-                    newRotDefi.headMe(myComm)
-                    self.RotDefis[0].comment=""
-            self.RotDefis=[newRotDefi]+self.RotDefis
-        else:
-            # insert ROT-DEFI card at specific position in the list of ROT-DEFIs
-            self.RotDefis=self.RotDefis[0:iAdd]+[newRotDefi]+self.RotDefis[iAdd:]
-    def AddRotDefis(self,newRotDefis,iAdd=-1,lMoveComment=True):
-        for myRotDefi in newRotDefis:
-            self.AddRotDefi(myRotDefi,iAdd=iAdd,lMoveComment=lMoveComment)
-
-    @staticmethod
-    def fromBuf(self,myBuffer,lFree=True):
-        newTransf=Transformation()
-        myBuf=""
-        for tmpLine in myBuffer.splitlines():
-            if (tmpLine.startswith("*")):
-                if (len(myBuf)==0):
-                    myBuf=tmpLine
-                else:
-                    myBuf=myBuf+"\n"+tmpLine
-            else:
-                tmpRotDefi=RotDefi()
-                myID,myName=tmpRotDefi.fromBuf(myBuf)
-                if (myID!=0):
-                    if (newTransf.ID==0):
-                        # first ROT-DEFI card of transformation
-                        newTransf.ID=myID
-                    elif(newTransf.ID!=myID):
-                        print("...cannot add ROT-DEFI with ID=%d to tranformation ID=%d!"%(myID,newTransf.ID))
-                        exit(1)
-                if (len(myName)>0):
-                    if (len(newTransf.echoName())==0):
-                        # first ROT-DEFI card of transformation
-                        newTransf.rename(myName,lNotify=False)
-                    elif (newTransf.echoName()!=myName):
-                        print("...cannot add ROT-DEFI named %s to tranformation named %s !"%(myName,newTransf.echoName()))
-                        exit(1)
-                newTransf.AddRotDefi(tmpRotDefi)
-                myBuf=""
-        return newTransf
-
-    def echo(self,lFree=True):
-        buf=""
-        for myRotDefi in self.RotDefis:
-            if (len(buf)>0):
-                buf=buf+"\n"
-            buf=buf+myRotDefi.echo(myID=self.ID,myName=self.name)
-        return buf
-
-class Usrbin(GeoObject):
-    '''
-    A very basic class for handling USRBIN cards.
-    For the time being, there is support only for:
-    - parsing/echoing;
-    - always 2 cards to fully define scoring;
-    - a single ROTPRBIN card per transformation (1:1 mapping between ROTPRBIN and
-      USRBIN cards); the mapping to the transformation is ALWAYS name-based;
-      the ROTPRBIN card always PRECEEDs the respective USRBIN card;
-    - NO comments between USRBIN cards defining the same scoring detector;
-    - parsing ALWAYS in FIXED format;
-    '''
-    def __init__(self,myName="",myComment=""):
-        GeoObject.__init__(self,myName=myName,myComment=myComment)
-        self.definition=[] # array of strings storing the lines defining the
-                           #   USRBIN. NB: USRBIN tags, & char and bin name
-                           #   are NOT stored.
-        self.TransfName=""
-
-    def echo(self):
-        '''take into account comment'''
-        tmpBuf=GeoObject.echoComm(self)
-        if (len(self.TransfName)>0):
-            tmpBuf=tmpBuf+"%-10s%10s%10s%10s%10s\n"\
-                %("ROTPRBIN","",self.TransfName,"",self.echoName())
-        for myDef,mySdum,myEoL in zip(self.definition,[self.echoName(),"&"],["\n",""]):
-            tmpBuf=tmpBuf+"%-10s%60s%-10s%-s"%("USRBIN",myDef,mySdum,myEoL)
-        return tmpBuf
-                        
-    @staticmethod
-    def fromBuf(myBuffer):
-        newUsrBin=Usrbin()
-        for myLine in myBuffer.split("\n"):
-            myLine=myLine.strip()
-            if (myLine.startswith("*")):
-                newUsrBin.tailMe(myLine)
-            elif (myLine.startswith("ROTPRBIN")):
-                newUsrBin.assignTrasf(myLine[20:30].strip())
-                if (len(newUsrBin.TransfName)==0):
-                    print("...something wrong when parsing USRBIN cards: no ROT-DEFI card name!")
-                    exit(1)
-            else:
-                newUsrBin.definition.append(myLine[10:70])
-                if (len(newUsrBin.definition)==1):
-                    # from first line defining USRBIN, get USRBIN name
-                    newUsrBin.rename(myLine[70:].strip(),lNotify=False)
-        if (len(newUsrBin.definition)!=2):
-            print("...something wrong when parsing USRBIN cards: got %d lines!"\
-                  %(len(newUsrBin.definition)))
-            exit(1)
-        if (len(newUsrBin.name)==0):
-            print("...something wrong when parsing USRBIN cards: no name!")
-            exit(1)
-        return newUsrBin
-
-    def assignTrasf(self,trasfName):
-        if (len(trasfName)>0):
-            self.TransfName=trasfName
-    def returnTrasf(self):
-        return self.TransfName
-    
 class Geometry():
     '''
     - name-based FLUKA geometry defition;
@@ -534,6 +25,9 @@ class Geometry():
                 found before or along the region declaration;
       . rot-defi: commented lines are considered always before the rot-defi card;
       . usrbin: commented lines are considered always before the URSBIN card;
+    - #define vars used only at parsing level, i.e. they are not stored
+      in the parsed geometry; only boolean #define vars for the time being,
+      but any nesting level is supported;
     '''
     def __init__(self):
         self.bods=[]
@@ -581,7 +75,7 @@ class Geometry():
             iEntry=0
         self.tras[iEntry].AddRotDefi(tmpRotDefi)
 
-    def headMe(self,myString,begLine="* \n"+"* "+"="*108,endLine="* "+"-"*108+"\n* "):
+    def headMe(self,myString,begLine="* \n"+"* "+"="*130,endLine="* "+"-"*130+"\n* "):
         '''
         simple method to head a string to the geometry declaration (bodies,
            regions, assignma, usrbin, rot-defi cards)
@@ -596,50 +90,74 @@ class Geometry():
         if (len(self.bins)>0):
             self.bins[0].headMe(actualString)
             
-    def ret(self,what,myName):
+    def ret(self,myKey,myValue):
         lFound=False
-        if (what.upper().startswith("BOD")):
-            if (myName.upper()=="ALL"):
+        if (myKey.upper().startswith("BODSINREG")):
+            if (myValue.upper()=="ALL"):
+                myReg,iReg=self.ret("reg","ALL")
+                myEntry=[]; iEntry=[]
+                for findReg in myReg:
+                    tmpEl,tmpInd=self.ret("BodsInReg",findReg)
+                    myEntry=myEntry+tmpEl
+                    iEntry=iEntry+tmpInd
+            else:
+                myReg,iReg=self.ret("reg",myValue)
+                myEntry=myReg.retBodiesInDef()
+                iEntry=[]
+                for findBod in myEntry:
+                    tmpEl,tmpInd=self.ret("bod",findBod)
+                    iEntry.append(tmpInd)
+                lFound=True
+        elif (myKey.upper().startswith("BOD")):
+            if (myValue.upper()=="ALL"):
                 myEntry=[ body.echoName() for body in self.bods ]
                 iEntry=[ ii for ii in range(len(self.bods)) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.bods):
-                    if (myEntry.echoName()==myName):
+                    if (myEntry.echoName()==myValue):
                         lFound=True
                         break
-        elif (what.upper().startswith("REG")):
-            if (myName.upper()=="ALL"):
+        elif (myKey.upper().startswith("REG")):
+            if (myValue.upper()=="ALL"):
                 myEntry=[ reg.echoName() for reg in self.regs ]
                 iEntry=[ ii for ii in range(len(self.regs)) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.regs):
-                    if (myEntry.echoName()==myName):
+                    if (myEntry.echoName()==myValue):
                         lFound=True
                         break
-        elif (what.upper().startswith("TRANSF")):
-            if (myName.upper()=="ALL"):
+        elif (myKey.upper().startswith("TRANSF")):
+            if (myValue.upper()=="ALL"):
                 myEntry=[ tras.echoName() for tras in self.tras ]
                 iEntry=[ ii for ii in range(len(self.tras)) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.tras):
-                    if (myEntry.echoName()==myName):
+                    if (myEntry.echoName()==myValue):
                         lFound=True
                         break
-        elif (what.upper().startswith("BIN") or what.upper().startswith("USRBIN")):
-            if (myName.upper()=="ALL"):
+        elif (myKey.upper().startswith("BININUNIT") or myKey.upper().startswith("USRBININUNIT")):
+            myEntry=[] ; iEntry=[]
+            if (isinstance(myValue,float) or isinstance(myValue,int)): myValue=[myValue]
+            for ii,myBin in enumerate(self.bins):
+                if (abs(myBin.getUnit()) in myValue):
+                    myEntry.append(myBin)
+                    iEntry.append(ii)
+                    lFound=True
+        elif (myKey.upper().startswith("BIN") or myKey.upper().startswith("USRBIN")):
+            if (myValue.upper()=="ALL"):
                 myEntry=[ myBin.echoName() for myBin in self.bins ]
                 iEntry=[ ii for ii in range(len(self.bins)) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.bins):
-                    if (myEntry.echoName()==myName):
+                    if (myEntry.echoName()==myValue):
                         lFound=True
                         break
         else:
-            print("%s not recognised! What should I look for in the geometry?"%(what))
+            print("%s not recognised! What should I look for in the geometry?"%(myKey))
             exit(1)
         if (not lFound):
             myEntry=None
@@ -652,18 +170,46 @@ class Geometry():
         FREE format used only for parsing ROT-DEFI cards (blank space as separator)!
         '''
         newGeom=Geometry()
+        defineFlags=[]
         print("parsing file %s..."%(myInpName))
         ff=open(myInpName,'r')
-        lRead=0
+        iRead=0
         lFree=False
+        lReads=[True]
         tmpBuf=""
         regBuf=""
         for tmpLine in ff.readlines():
+
+            # PRE-PROCESSOR
+            if (tmpLine.startswith("#define")):
+                data=tmpLine.split()
+                if (len(data)>2):
+                    print("...cannot handle define vars with numerical value, only booleans!")
+                    print(tmpLine)
+                    exit(1)
+                if (data[1] not in defineFlags):
+                    defineFlags.append(data[1])
+                continue
+            elif (tmpLine.startswith("#if")):
+                data=tmpLine.split()
+                lReads.append(data[1] in defineFlags)
+                continue
+            elif (tmpLine.startswith("#elif")):
+                data=tmpLine.split()
+                lReads[-1]=(data[1] in defineFlags)
+                continue
+            elif (tmpLine.startswith("#else")):
+                lReads[-1]=not lReads[-1]
+                continue
+            elif (tmpLine.startswith("#end")):
+                lReads.pop()
+                continue
+            if (not all(lReads)): continue
             
             # OUTSIDE GEOBEGIN-GEOEND
-            if (lRead==0):
+            if (iRead==0):
                 if (tmpLine.startswith("GEOBEGIN")):
-                    lRead=1
+                    iRead=1
                 elif (tmpLine.startswith("ASSIGNMA")):
                     newGeom.assignma(tmpLine)
                     tmpBuf="" # flush buffer
@@ -689,16 +235,16 @@ class Geometry():
                     tmpBuf="" # flush buffer
                     
             # INSIDE GEOBEGIN-GEOEND
-            elif (lRead==1):
+            elif (iRead==1):
                 # title after GEOBEGIN
                 newGeom.title=tmpLine[20:].strip()
-                lRead=2
+                iRead=2
                 tmpBuf="" # flush buffer
-            elif (lRead==2):
+            elif (iRead==2):
                 # definition of FLUKA bodies
                 if (tmpLine.startswith("END")):
                     print("...acquired %d bodies;"%(len(newGeom.bods)))
-                    lRead=3
+                    iRead=3
                     tmpBuf="" # flush buffer
                 elif (tmpLine.startswith("$start")):
                     print("$start* cards NOT supported!")
@@ -709,7 +255,7 @@ class Geometry():
                         # acquire body
                         newGeom.add(Body.fromBuf(tmpBuf.strip()),what="BODY")
                         tmpBuf="" # flush buffer
-            elif (lRead==3):
+            elif (iRead==3):
                 # definition of FLUKA regions
                 if (tmpLine.startswith("END")):
                     if (len(regBuf)>0):
@@ -718,7 +264,7 @@ class Geometry():
                         regBuf="" # flush region def buffer
                     print("...acquired %d regions;"%(len(newGeom.regs)))
                     tmpBuf="" # flush buffer
-                    lRead=0 # ignore LATTICE cards
+                    iRead=0 # ignore LATTICE cards
                 else:
                     if (tmpLine.startswith("*")):
                         # comment line: store in buffer
@@ -887,7 +433,7 @@ class Geometry():
         else:
             print("...what should I echo? %s NOT reconised!"%(what))
 
-    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lDebug=False):
+    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lGeoDirs=False,lDebug=False):
         '''
         Bodies are applied the transformation as requested by the user:
         * first, rotation (meant to be expressed in ref sys of the object to rotate);
@@ -905,48 +451,57 @@ class Geometry():
             print("...no transformation provided!")
         else:
             ROTDEFIlist=[]
+            myName="ToFinPos"
             if (myMat is not None):
                 print("...applying transformation expressed by matrix to geometry...")
-                for ii in range(len(self.bods)):
-                    self.bods[ii].rotate(myMat=myMat,myTheta=None,myAxis=None,\
-                                         lDegs=lDegs,lDebug=lDebug)
+                if (not lGeoDirs):
+                    for ii in range(len(self.bods)):
+                        self.bods[ii].rotate(myMat=myMat,myTheta=None,myAxis=None,\
+                                             lDegs=lDegs,lDebug=lDebug)
                 thetas=myMat.GetGimbalAngles() # [degs]
                 for myAx,myTh in enumerate(thetas,1):
                     if (myTh!=0.0):
                         ROTDEFIlist.append(RotDefi(myAx=myAx,myTh=myTh))
             elif (myTheta is not None):
-                if (type(myTheta) is list and type(myAxis) is list):
+                if (isinstance(myTheta,list) and isinstance(myAxis,list)):
                     if ( len(myTheta)!=len(myAxis) ):
                         print("...inconsistent number of angles (%d) and axes (%d)!"\
                               %(len(myTheta),len(myAxis)))
                         exit(1)
                     for myT,myAx in zip(myTheta,myAxis):
-                        self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lDebug=lDebug)
+                        # iteratively call this same method, on a single angle
+                        self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lGeoDirs=lGeoDirs,lDebug=lDebug)
                 elif (myTheta!=0.0):
                     print("...applying rotation by %f degs around axis %d..."%\
                           (myTheta,myAxis))
-                    for ii in range(len(self.bods)):
-                        self.bods[ii].rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,\
-                                             lDegs=lDegs,lDebug=lDebug)
+                    if (not lGeoDirs):
+                        for ii in range(len(self.bods)):
+                            self.bods[ii].rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,\
+                                                 lDegs=lDegs,lDebug=lDebug)
                     ROTDEFIlist.append(RotDefi(myAx=myAxis,myTh=myTheta))
             if (dd is not None):
                 print("...applying traslation array [%f,%f,%f] cm..."%\
                       (dd[0],dd[1],dd[2]))
-                for ii in range(len(self.bods)):
-                    self.bods[ii].traslate(dd=dd)
+                if (not lGeoDirs):
+                    for ii in range(len(self.bods)):
+                        self.bods[ii].traslate(dd=dd)
                 myDD=-dd
                 if (isinstance(myDD,list)):
                     myDD=np.array(DD)
-                ROTDEFIlist=[RotDefi(myDD=myDD)]+ROTDEFIlist
+                ROTDEFIlist.append(RotDefi(myDD=myDD))
             if (len(ROTDEFIlist)>0):
-                # - check presence of USRBINs without ROTPRBIN cards:
-                #   if there is one, add the transformation
+                # add transformation to actual position...
                 lCreate=False
-                myName="ToFinPos"
-                for myBin in self.bins:
-                    if ( myBin.returnTrasf()=="" ):
-                        lCreate=True
-                        myBin.assignTrasf(myName)
+                if ( lGeoDirs and not lCreate ):
+                    # ...if $start_tranform directives are used
+                    myEntry, iEntry = self.ret("TRANSF",myName)
+                    lCreate=myEntry is None
+                if ( not lCreate ):
+                    # ...if USRBINs are present without ROTPRBIN cards
+                    for myBin in self.bins:
+                        if ( myBin.returnTrasf()=="" ):
+                            lCreate=True
+                            myBin.assignTrasf(myName)
                 if (lCreate):
                     print("...adding the final transformation to (existing) list of transformations...")
                     self.add(Transformation(myID=len(self.tras),myName=myName),what="tras")
@@ -954,6 +509,10 @@ class Geometry():
                 #   of existing transformation
                 for myTras in self.tras:
                     myTras.AddRotDefis(reversed(ROTDEFIlist),iAdd=0)
+                # - link solid trasformation
+                if (lGeoDirs):
+                    for ii in range(len(self.bods)):
+                        self.bods[ii].linkTransformName(Tname=myName)
         print("...done.")
 
     def rename(self,newName,lNotify=True):
@@ -992,22 +551,144 @@ class Geometry():
             else:
                 print("Geometry.rename(): USRBIN with no original name in geometry!")
                 exit(1)
+        for iBody in range(len(self.bods)):
+            if (self.bods[iBody].retTransformName() is not None):
+                if (self.bods[iBody].retTransformName() not in oldTrasNames):
+                    print("cannot find name of transformation for moving geo: %s!"%(self.bods[iBody].retTransformName()))
+                    exit(1)
+                ii=oldTrasNames.index(self.bods[iBody].retTransformName())
+                self.bods[iBody].linkTransformName(Tname=newTrasNames[ii])
         print("...done.")
 
     def flagRegs(self,whichRegs,rCont,rCent):
-        if (whichRegs is str):
+        if (isinstance(whichRegs,str)):
             if (whichRegs.upper()=="ALL"):
-                regs2mod,iRegs2mod=myGeo.ret("reg","ALL")
+                regs2mod,iRegs2mod=self.ret("reg","ALL")
             else:
                 regs2mod=[whichRegs]
         else:
             if ( "ALL" in [tmpStr.upper() for tmpStr in whichRegs] ):
-                regs2mod,iRegs2mod=myGeo.ret("reg","ALL")
+                regs2mod,iRegs2mod=self.ret("reg","ALL")
             else:
                 regs2mod=whichRegs
-        for whichReg in whichRegs:
+        for whichReg in regs2mod:
             outReg,iReg=self.ret("reg",whichReg)
             outReg.initCont(rCont=rCont,rCent=rCent)
+
+    def resizeBodies(self,newL,whichBods="ALL",lDebug=False):
+        '''
+        input:
+        - newL: new length [cm];
+        - whichBods: list of body names to be updated (if infinite);
+        '''
+        if (isinstance(whichBods,str)):
+            if (whichBods.upper()=="ALL"):
+                bods2mod,iBods2mod=self.ret("bod","ALL")
+                if (not isinstance(bods2mod,list)):
+                    bods2mod, iBods2mod = [whichBods], [iBods2mod]
+            else:
+                bods2mod=[whichBods]
+        else:
+            if ( "ALL" in [tmpStr.upper() for tmpStr in whichBods] ):
+                bods2mod,iBods2mod=self.ret("bod","ALL")
+            else:
+                bods2mod=whichBods
+        if (lDebug): print("re-sizing %d bodies..."%(len(bods2mod)))
+        for bod2mod in bods2mod:
+            whichBod,iBod=self.ret("bod",bod2mod)
+            whichBod.resize(newL)
+        if (lDebug): print("...done;")
+
+    def makeBodiesRotatable(self,lDebug=False,infL=1000.):
+        for myBod in self.bods:
+            myBod.makeRotatable(lDebug=lDebug,infL=infL)
+
+    def reAssiginUSRBINunits(self,nMaxBins=None,nUSRBINs=None,usedUnits=None,lDebug=False):
+        if (lDebug): print("re-assigning USRBIN units...")
+        if (nMaxBins is not None and nUSRBINs is not None):
+            print("Please tell me if I have to re-assign USRBIN units based on:")
+            print("- max number of bins in a unit;")
+            print("- max number of USRBINs in a unit;")
+            exit(1)
+        if (usedUnits is None): usedUnits=[]
+        if (type(usedUnits) is not list): usedUnits=[usedUnits]
+        uniqueUnits=list(set([ myBin.getUnit() for myBin in self.bins ]))
+        uniqueUnits.sort(key=abs)
+        if (lDebug):
+            print("...%d original units:"%(len(uniqueUnits)),uniqueUnits)
+            if (len(usedUnits)>0):
+                print("...units NOT to be used:",usedUnits)
+        currUnits=[21+ii for ii in range(len(uniqueUnits))]
+        for ii in range(len(currUnits)):
+            while (currUnits[ii] in [abs(iu) for iu in usedUnits]):
+                currUnits[ii]=currUnits[ii]+1
+                if (currUnits[ii]>99):
+                    print("...exceeding max number of supported units!")
+                    exit(1)
+        myN=[ 0 for ii in range(len(currUnits)) ]
+        if (nMaxBins is not None):
+            nMax=nMaxBins
+        elif(nUSRBINs is not None):
+            nMax=nUSRBINs
+        else:
+            print("Please tell me if I have to re-assign USRBIN units based on:")
+            print("- max number of bins in a unit;")
+            print("- max number of USRBINs in a unit;")
+            exit(1)
+        for myBin in self.bins:
+            iUnit=uniqueUnits.index(myBin.getUnit())
+            if (nMaxBins is not None):
+                nAdd=myBin.getNbins()
+            elif(nUSRBINs is not None):
+                nAdd=1
+            if (myN[iUnit]+nAdd>nMax):
+                myUnit=currUnits[iUnit]
+                while(myUnit<=max(currUnits) or \
+                      myUnit in usedUnits ):
+                    myUnit=myUnit+1
+                    if (myUnit>99):
+                        print("...exceeding max number of supported units!")
+                        exit(1)
+                currUnits[iUnit]=myUnit
+                myN[iUnit]=nAdd
+            else:
+                myN[iUnit]=myN[iUnit]+nAdd
+            myBin.setUnit(currUnits[iUnit])
+        if (lDebug): print("...done;")
+
+    def resizeUsrbins(self,newL,whichUnits=None,axis=3,lDebug=False):
+        '''
+        input:
+        - newL: new length [cm];
+        - whichUnits: units of USRBINs to be updated;
+        '''
+        if (whichUnits is None): whichUnits="ALL"
+        if (isinstance(whichUnits,str)):
+            if (whichUnits.upper()=="ALL"):
+                bins2mod,iBins2mod=self.ret("bin","ALL")
+                if (lDebug): print("re-sizing ALL USRBINs, i.e. %d ..."%(len(bins2mod)))
+            else:
+                print("Cannot specify USRBIN names for resizing!")
+                exit(1)
+        elif (isinstance(whichUnits,float) or isinstance(whichUnits,int)):
+            bins2mod,iBins2mod=self.ret("BININUNIT",whichUnits)
+            if (lDebug): print("re-sizing USRBINs in unit %d, i.e. %d ..."%(whichUnits,len(bins2mod)))
+        elif (isinstance(whichUnits,list)):
+            bins2mod=[]; iBins2mod=[]
+            for whichUnit in whichUnits:
+                tBins2mod,tIBins2mod=self.ret("BININUNIT",whichUnit)
+                print("re-sizing USRBINs in unit %d, i.e. %d ..."%(whichUnit,len(tBins2mod)))
+                if (isinstance(tBins2mod,list)):
+                    bins2mod=bins2mod+tBins2mod
+                else:
+                    bins2mod.append(tBins2mod)
+        else:
+            print("Wrong indication of USRBINs for resizing!")
+            print(whichUnits)
+            exit(1)
+        for bin2mod in bins2mod:
+            bin2mod.resize(newL,axis=3)
+        if (lDebug): print("...done;")
 
     @staticmethod
     def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,defMat="VACUUM",tmpTitle="Hive for a spherical shell",lWrapBHaround=False,lDebug=True):
@@ -1139,10 +820,11 @@ class Geometry():
                 tmpReg.material=defMat
                 tmpReg.addZone('+%-8s -%-8s +%-8s'%(spheres[iR].echoName(),spheres[iR-1].echoName(),thetas[0].echoName()))
                 myCenter=cellGrid.ret(what="POINT",iEl=iHive)
+                rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(TTs[0]-90)))
                 tmpReg.tailMe("* - hive region %4d: SOUTH POLE! R[cm]=[%g:%g], theta[deg]=[-90:%g]"%(
                     iHive,RRs[iR-1],RRs[iR],TTs[0]))
                 tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
-                tmpReg.initCont(rCont=1,rCent=myCenter)
+                tmpReg.initCont(rCont=1,rCent=myCenter,rMaxLen=rMaxLen)
                 newGeom.add(tmpReg,what="reg")
                 iHive=iHive+1
             for iT in range(1,len(thetas)):
@@ -1160,10 +842,11 @@ class Geometry():
                     pDef='+%-8s -%-8s'%(phis[iP].echoName(),phis[iP-1].echoName())
                     tmpReg.addZone('%s %s %s'%(rDef,tDef,pDef))
                     myCenter=cellGrid.ret(what="POINT",iEl=iHive)
+                    rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*np.radians(TTs[iT]-TTs[iT-1]),RRs[iR]*np.radians(PPs[iT]-PPs[iT-1]))
                     tmpReg.tailMe("* - hive region %4d: R[cm]=[%g:%g], theta[deg]=[%g:%g], phi[deg]=[%g:%g]"%(
                         iHive,RRs[iR-1],RRs[iR],TTs[iT-1],TTs[iT],PPs[iP-1],PPs[iP]))
                     tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
-                    tmpReg.initCont(rCont=1,rCent=myCenter)
+                    tmpReg.initCont(rCont=1,rCent=myCenter,rMaxLen=rMaxLen)
                     newGeom.add(tmpReg,what="reg")
                     iHive=iHive+1
             if (cellGrid.HasPole("N")):
@@ -1172,10 +855,11 @@ class Geometry():
                 tmpReg.material=defMat
                 tmpReg.addZone('+%-8s -%-8s +%-8s'%(spheres[iR].echoName(),spheres[iR-1].echoName(),thetas[-1].echoName()))
                 myCenter=cellGrid.ret(what="POINT",iEl=iHive)
+                rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(90-TTs[-1])))
                 tmpReg.tailMe("* - hive region %4d: NORTH POLE! R[cm]=[%g:%g], theta[deg]=[%g:90]"%(
                     iHive,RRs[iR-1],RRs[iR],TTs[-1]))
                 tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
-                tmpReg.initCont(rCont=1,rCent=myCenter)
+                tmpReg.initCont(rCont=1,rCent=myCenter,rMaxLen=rMaxLen)
                 newGeom.add(tmpReg,what="reg")
                 iHive=iHive+1
 
@@ -1187,9 +871,9 @@ class Geometry():
         return newGeom
 
     @staticmethod
-    def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,osRegNames=[],lDebug=True):
+    def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,osRegNames=[],lGeoDirs=False,lDebug=True):
         '''
-        This method defines a FLUKA geometry representing a grid of objects.
+        This method defines a list of FLUKA geometry representing a grid of objects.
 
         input parameters:
         - grid: an instance of a Grid() class, i.e. a list of locations;
@@ -1216,17 +900,11 @@ class Geometry():
             #   NB: give priority to angles/axis wrt matrices, for higher
             #       numerical accuracy in final .inp file
             if (len(myLoc.ret("ANGLE"))>0):
-                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myTheta=myLoc.ret("ANGLE"),myAxis=myLoc.ret("AXIS"),lDebug=lDebug)
+                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myTheta=myLoc.ret("ANGLE"),myAxis=myLoc.ret("AXIS"),lGeoDirs=lGeoDirs,lDebug=lDebug)
             else:
-                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myMat=myLoc.ret("MATRIX"),lDebug=lDebug)
+                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myMat=myLoc.ret("MATRIX"),lGeoDirs=lGeoDirs,lDebug=lDebug)
             # - flag the region(s) outside the prototypes or that should be sized
             #   by the hive cells
-            if (not isinstance(osRegNames, list)):
-                if ( osRegNames.upper()=="ALL" ):
-                    osRegNames, iEntry =myGeo.ret("REG","ALL")
-                else:
-                    print("osRegNames must be either a list or the string 'all'!")
-                    exit(1)
             myGeo.flagRegs(osRegNames,-1,myLoc.ret("POINT"))
             # - rename the clone
             baseName="GR%03d"%(iLoc)
@@ -1238,17 +916,19 @@ class Geometry():
             # - append clone to list of geometries
             myGeos.append(myGeo)
         # return merged geometry
-        return Geometry.appendGeometries(myGeos)
+        return myGeos
 
     @staticmethod
-    def MergeGeos(hiveGeo,gridGeo,lDebug=True,myTitle=None,prec=0.001):
+    def MergeGeos(hiveGeo,gridGeo,lDebug=True,myTitle=None,prec=0.001,enlargeFact=1.1,resBins="ALL"):
         '''
         This method merges one FLUKA geometry onto another one.
 
         input parameters:
         - hiveGeo: Geometry instance of the hive;
-        - gridGeo: Geometry instance of the grid of objects.
-        - prec: precision of identification of points proximity [cm]
+        - gridGeo: Geometry instance of the grid of objects;
+        - prec: precision of identification of points proximity [cm];
+        - enlargeFact: (safety) factor for scaling infinite bodies and USRBINs;
+        - resBins: list of units of USRBINs that should be resized;
 
         The two geometries must not have common names - no check is performed
           for the time being.
@@ -1259,61 +939,84 @@ class Geometry():
           and the respective region in hiveGeo will disappear.
         '''
         print("merging geometries...")
-        iRhg=[ ii for ii,mReg in enumerate(hiveGeo.regs) if mReg.rCont==1 ]
-        cRhg=np.array([ mReg.rCent for ii,mReg in enumerate(hiveGeo.regs) if mReg.rCont==1 ])
-        ucRhg=np.unique(cRhg,axis=0)
-        iRgg=[ ii for ii,mReg in enumerate(gridGeo.regs) if mReg.rCont==-1 ]
-        cRgg=np.array([ mReg.rCent for ii,mReg in enumerate(gridGeo.regs) if mReg.rCont==-1 ])
-        ucRgg=np.unique(cRgg,axis=0)
+        if (isinstance(hiveGeo,Geometry)): hiveGeo=[hiveGeo]
+        if (isinstance(gridGeo,Geometry)): gridGeo=[gridGeo]
+        if (isinstance(enlargeFact,float) or isinstance(enlargeFact,int)):
+            if (enlargeFact<=0): enlargeFact=None
+        # hiveGeo
+        iRhgs=[]; jRhgs=[]; cRhgs=[];
+        for jj,myGeo in enumerate(hiveGeo):
+            iRhgs=iRhgs+[ ii for ii,mReg in enumerate(myGeo.regs) if mReg.rCont==1 ]
+            jRhgs=jRhgs+[ jj for mReg in myGeo.regs if mReg.rCont==1 ]
+            cRhgs=cRhgs+[ mReg.rCent for mReg in myGeo.regs if mReg.rCont==1 ]
+        cRhgs=np.array(cRhgs)
+        ucRhgs=np.unique(cRhgs,axis=0)
+        # gridGeo
+        iRggs=[]; jRggs=[]; cRggs=[];
+        for jj,myGeo in enumerate(gridGeo):
+            iRggs=iRggs+[ ii for ii,mReg in enumerate(myGeo.regs) if mReg.rCont==-1 ]
+            jRggs=jRggs+[ jj for mReg in myGeo.regs if mReg.rCont==-1 ]
+            cRggs=cRggs+[ mReg.rCent for mReg in myGeo.regs if mReg.rCont==-1 ]
+        cRggs=np.array(cRggs)
+        ucRggs=np.unique(cRggs,axis=0)
         if (lDebug):
-            print("...found %d containing regions in hive:"%(len(iRhg)))
-            print("   ...with %d unique centers!"%(len(ucRhg)))
-            print(iRhg)
-            print(cRhg)
-            print(ucRhg)
-            print("...found %d contained/sized regions in grid:"%(len(iRgg)))
-            print("   ...with %d unique centers!"%(len(ucRgg)))
-            print(iRgg)
-            print(cRgg)
-            print(ucRgg)
-        if (len(iRhg)==len(ucRhg)):
+            print("...found %d containing regions in hive:"%(len(iRhgs)))
+            print("   ...with %d unique centers!"%(len(ucRhgs)))
+            print(iRhgs)
+            print(jRhgs)
+            print(cRhgs)
+            print(ucRhgs)
+            print("...found %d contained/sized regions in grid:"%(len(iRggs)))
+            print("   ...with %d unique centers!"%(len(ucRggs)))
+            print(iRggs)
+            print(jRggs)
+            print(cRggs)
+            print(ucRggs)
+        if (len(iRhgs)==len(ucRhgs)):
             # for each location, only one hive region is concerned:
             #   merge each containing hive region into the concerned
             #   grid regions, and then remove the hive region
             # - merge region defs
-            removeRegs=[]
-            for jRhg in iRhg:
-                for jRgg in iRgg:
-                    if (np.linalg.norm(gridGeo.regs[jRgg].rCent-hiveGeo.regs[jRhg].rCent)<prec):
-                        gridGeo.regs[jRgg].merge(hiveGeo.regs[jRhg])
-                        if (hiveGeo.regs[jRhg].echoName() not in removeRegs):
-                            removeRegs.append(hiveGeo.regs[jRhg].echoName())
+            removeRegs=[]; jRemoveRegs=[]
+            for iRhg,jRhg in zip(iRhgs,jRhgs):
+                for iRgg,jRgg in zip(iRggs,jRggs):
+                    if (np.linalg.norm(gridGeo[jRgg].regs[iRgg].rCent-hiveGeo[jRhg].regs[iRhg].rCent)<prec):
+                        # resize infinite bodies and USRBINs
+                        if (enlargeFact is not None or resBins is not None):
+                            newL=enlargeFact*hiveGeo[jRhg].regs[iRhg].rMaxLen
+                        if (enlargeFact is not None): gridGeo[jRgg].resizeBodies(newL,lDebug=lDebug)
+                        if (resBins is not None): gridGeo[jRgg].resizeUsrbins(newL,whichUnits=resBins,lDebug=lDebug)
+                        # actually merge
+                        gridGeo[jRgg].regs[iRgg].merge(hiveGeo[jRhg].regs[iRhg])
+                        if (hiveGeo[jRhg].regs[iRhg].echoName() not in removeRegs):
+                            removeRegs.append(hiveGeo[jRhg].regs[iRhg].echoName())
+                            jRemoveRegs.append(jRhg)
             # - remove merged regs
-            for removeReg in removeRegs:
-                myReg,iReg=hiveGeo.ret("REG",removeReg)
-                hiveGeo.regs.pop(iReg)
-        elif(len(iRgg)==len(ucRgg)):
+            for removeReg,jRemoveReg in zip(removeRegs,jRemoveRegs):
+                myReg,iReg=hiveGeo[jRemoveReg].ret("REG",removeReg)
+                hiveGeo[jRemoveReg].regs.pop(iReg)
+        elif(len(iRggs)==len(ucRggs)):
             # for each location, only one grid region is concerned:
             #   merge each contained grid region into the concerned
             #   hive regions, and then remove the grid region
             # - merge region defs
-            removeRegs=[]
-            for jRgg in iRgg:
-                for jRhg in iRhg:
-                    if (np.linalg.norm(hiveGeo.regs[jRhg].rCent-gridGeo.regs[jRgg].rCent)<prec):
-                        hiveGeo.regs[jRhg].merge(gridGeo.regs[jRgg])
-                        if (gridGeo.regs[jRgg].echoName() not in removeRegs):
-                            removeRegs.append(gridGeo.regs[jRgg].echoName())
+            removeRegs=[]; jRemoveRegs=[]
+            for iRgg,jRgg in zip(iRggs,jRggs):
+                for iRhg,jRhg in zip(iRhgs,jRhgs):
+                    if (np.linalg.norm(gridGeo[jRgg].regs[iRgg].rCent-hiveGeo[jRhg].regs[iRhg].rCent)<prec):
+                        hiveGeo[jRhg].regs[iRhg].merge(gridGeo[jRgg].regs[iRgg])
+                        if (gridGeo[jRgg].regs[iRgg].echoName() not in removeRegs):
+                            removeRegs.append(gridGeo[jRgg].regs[iRgg].echoName())
+                            jRemoveRegs.append(jRgg)
             # - remove merged regs
             for removeReg in removeRegs:
-                myReg,iReg=gridGeo.ret("REG",removeReg)
-                gridGeo.regs.pop(iReg)
+                myReg,iReg=gridGeo[jRemoveReg].ret("REG",removeReg)
+                gridGeo[jRemoveReg].regs.pop(iReg)
         else:
             print("...cannot merge more than a region of the hive and more than a region of the grid for a single location!")
             exit(1)
-        print("...done.")
             
-        return Geometry.appendGeometries([hiveGeo,gridGeo],myTitle=myTitle)
+        return Geometry.appendGeometries(hiveGeo+gridGeo,myTitle=myTitle)
 
     @staticmethod
     def WrapBH_Sphere(myGeo,Rmin,Rmax,defMat="VACUUM",lDebug=True):
@@ -1359,7 +1062,7 @@ class Geometry():
         print('...done.')
         return Geometry.MergeGeos(newGeom,myGeo,lDebug=lDebug,myTitle=myGeo.title)
 
-def acquireGeometries(fileNames,geoNames=None):
+def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
     '''
     A simple function to parse a series of geometry files and
       store them in a dictionary of geometries.
@@ -1385,10 +1088,19 @@ def acquireGeometries(fileNames,geoNames=None):
         if (geoNames[ii]!=fileNames[ii]):
             print("--> geometry saved in DB as %s;"%(geoNames[ii]))
     print("...acquired %d/%d geometries;"%(len(myGeos),len(fileNames)))
+
+    # make geometries rotatable
+    if (lMakeRotatable):
+        print("making acquired geometries rotatable...")
+        for myProtoName,myProtoGeo in myGeos.items():
+            myProtoGeo.makeBodiesRotatable()
+        print("...done;")
+        
     return myGeos
 
 if (__name__=="__main__"):
     lDebug=False
+    lGeoDirs=False
     # # - manipulate a geometry
     # caloCrysGeo=Geometry.fromInp("caloCrys.inp")
     # myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
@@ -1399,31 +1111,32 @@ if (__name__=="__main__"):
     R=75
     dR=50
     NR=2
-    Tmin=-90.0 # theta [degs] --> range: -Tmax:Tmax
-    Tmax=90.0  # theta [degs] --> range: -Tmax:Tmax
-    NT=19      # number of steps (i.e. grid cells)
-    Pmin=-180
-    Pmax=160   # phi [degs] --> range: -Pmax:Pmax
-    NP=18      # number of steps (i.e. grid cells)
+    Tmin=-20.0 # theta [degs] --> range: -Tmax:Tmax
+    Tmax=20.0  # theta [degs] --> range: -Tmax:Tmax
+    NT=4       # number of steps (i.e. grid cells)
+    Pmin=-7.5
+    Pmax=7.5   # phi [degs] --> range: -Pmax:Pmax
+    NP=5       # number of steps (i.e. grid cells)
     # Tmax=3.0  # theta [degs] --> range: -Tmax:Tmax
     # NT=4      # number of steps (i.e. grid cells)
     # Pmax=2.0  # phi [degs] --> range: -Pmax:Pmax
     # NP=3      # number of steps (i.e. grid cells)
-
+    
     # - hive geometry
     HiveGeo=Geometry.DefineHive_SphericalShell(R,R+dR,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
     # HiveGeo.echo("hive.inp")
-
+    
     # - gridded crystals
     #   acquire geometries
-    fileNames=[ "caloCrys_01.inp" ] ; geoNames=fileNames
-    myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames);
+    fileNames=[ "caloCrys_02.inp" ] ; geoNames=fileNames
+    myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames,lMakeRotatable=not lGeoDirs);
     cellGrid=grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
-    myProtoList=[ "caloCrys_01.inp" for ii in range(len(cellGrid)) ]
-    GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lDebug=lDebug)
-    # GridGeo.echo("grid.inp")
-
-    # - merge geometries
-    mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,lDebug=lDebug)
-    mergedGeo.echo("merged.inp")
+    myProtoList=[ "caloCrys_02.inp" for ii in range(len(cellGrid)) ]
+    GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lGeoDirs=lGeoDirs,lDebug=lDebug)
     
+    (Geometry.appendGeometries(GridGeo)).echo("grid.inp")
+    
+    # - merge geometries
+    mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,lDebug=lDebug,resBins=25)
+    mergedGeo.reAssiginUSRBINunits(nMaxBins=35*35*5000,usedUnits=26)
+    mergedGeo.echo("merged.inp")
