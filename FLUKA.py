@@ -13,6 +13,9 @@ numDigitsFREE=expDigitsFREE-7
 cut0sFIXED="0"*2
 expDigitsFIXED=10
 numDigitsFIXED=expDigitsFIXED-7
+# definition handling
+remSpaceAfters=["+","-","(",")","|"]
+addSpaceAfters=["(",")","|"]
 
 class GeoObject():
     '''
@@ -56,6 +59,7 @@ class GeoObject():
         return self.name
             
 def echoFloats(myFloats,expDigits=None,numDigits=None,prec=StringPrec,cut0s=None,lFree=True):
+    'function for echoing floats in a human-readable way'
     if (lFree):
         if (expDigits is None): expDigits=expDigitsFREE
         if (numDigits is None): numDigits=numDigitsFREE
@@ -110,6 +114,7 @@ def echoFloats(myFloats,expDigits=None,numDigits=None,prec=StringPrec,cut0s=None
     return myStrs
 
 def assembleLine(myStrings,maxLen=MaxLineLength,header=LineHeader,lMultiLine=True):
+    'function for assembling a FLUKA line made of myStrings respecting all FLUKA constraits'
     if (len(myStrings)==0):
         finStr=""
     else:
@@ -128,3 +133,16 @@ def assembleLine(myStrings,maxLen=MaxLineLength,header=LineHeader,lMultiLine=Tru
                 curLen=curLen+len(myStr)+1
     return finStr
 
+def cleanRegLine(myLine,remSpaceAfters=remSpaceAfters,addSpaceAfters=addSpaceAfters):
+    'function for cleaning away useless empty spaces from a region definition line'
+    oLine=myLine
+    # - remove useless empty spaces
+    for remSpaceAfter in remSpaceAfters:
+        myRep="%1s "%(remSpaceAfter)
+        while (myRep in oLine):
+            oLine=oLine.replace(myRep,remSpaceAfter)
+    # - re-introduce the necessary ones
+    for addSpaceAfter in addSpaceAfters:
+        myRep="%1s "%(addSpaceAfter)
+        oLine=oLine.replace(addSpaceAfter,myRep)
+    return oLine

@@ -3,7 +3,7 @@
 # python version: >= 3.8.10
 
 import numpy as np
-from FLUKA import GeoObject
+from FLUKA import GeoObject, assembleLine, MaxLineLength, LineHeader, cleanRegLine, remSpaceAfters, addSpaceAfters
 
 class Region(GeoObject):
     '''
@@ -78,14 +78,37 @@ class Region(GeoObject):
     def isNonEmpty(self):
         return len(self.definition)>0
         
-    def echo(self,lMat=False):
+    def echo(self,lMat=False,lFree=True,maxLen=MaxLineLength,header=LineHeader,lMultiLine=True,\
+             remSpaceAfters=remSpaceAfters,addSpaceAfters=addSpaceAfters):
         '''take into account comment'''
         if (lMat):
             # echo ASSIGNMA card
             return GeoObject.echoComm(self)+"ASSIGNMA  %10s%10s" % ( self.material, self.echoName() )
         else:
-            return GeoObject.echoComm(self)+"%-8s   %4d %s" % \
-                ( self.echoName(), self.neigh, self.definition )
+            myString=""
+            myStrings=["%-8s"%(self.echoName()),"%4d"%(self.neigh)]
+            lFirst=True
+            for tmpString in self.definition.splitlines():
+                if (tmpString.startswith("*")):
+                    # print comment lines as they are
+                    addLine=tmpString
+                    if (lFirst):
+                        myString=assembleLine(myStrings,maxLen=maxLen,header=header,lMultiLine=lMultiLine)
+                else:
+                    # print definition line respecting all FLUKA constraints
+                    ttString=cleanRegLine(tmpString.strip(),remSpaceAfters=remSpaceAfters,addSpaceAfters=addSpaceAfters)
+                    if (lFirst):
+                        addLine=assembleLine(myStrings+ttString.split(),maxLen=maxLen,header=header,lMultiLine=lMultiLine)
+                    else:
+                        addLine=assembleLine([header]+ttString.split(),maxLen=maxLen,header=header,lMultiLine=lMultiLine)
+
+                liasChar="\n"
+                if (lFirst):
+                    liasChar=""
+                    lFirst=False
+
+                myString=myString+liasChar+addLine
+            return GeoObject.echoComm(self)+myString
 
     def retBodiesInDef(self):
         'return list of body names in region definition'
