@@ -143,7 +143,7 @@ class Geometry():
             if (isinstance(myValue,float) or isinstance(myValue,int)): myValue=[myValue]
             for ii,myBin in enumerate(self.bins):
                 if (abs(myBin.getUnit()) in myValue):
-                    myEntry.append(myBin)
+                    myEntry.append(myBin.echoName())
                     iEntry.append(ii)
                     lFound=True
         elif (myKey.upper().startswith("BIN") or myKey.upper().startswith("USRBIN")):
@@ -635,13 +635,16 @@ class Geometry():
             print("- max number of bins in a unit;")
             print("- max number of USRBINs in a unit;")
             exit(1)
+        if (isinstance(nMax,int) or isinstance(nMax,float)):
+            nMax=[nMax for ii in range(len(uniqueUnits))]
+        newUnits=[ [currUnits[ii]] for ii in range(len(uniqueUnits)) ]
         for myBin in self.bins:
             iUnit=uniqueUnits.index(myBin.getUnit())
             if (nMaxBins is not None):
                 nAdd=myBin.getNbins()
             elif(nUSRBINs is not None):
                 nAdd=1
-            if (myN[iUnit]+nAdd>nMax):
+            if (myN[iUnit]+nAdd>nMax[iUnit]):
                 myUnit=currUnits[iUnit]
                 while(myUnit<=max(currUnits) or \
                       myUnit in usedUnits ):
@@ -651,9 +654,12 @@ class Geometry():
                         exit(1)
                 currUnits[iUnit]=myUnit
                 myN[iUnit]=nAdd
+                newUnits[iUnit].append(myUnit)
             else:
                 myN[iUnit]=myN[iUnit]+nAdd
             myBin.setUnit(currUnits[iUnit])
+        for iUnit in range(len(uniqueUnits)):
+            print("...old unit: %d - new units:"%(uniqueUnits[iUnit]),newUnits[iUnit])
         if (lDebug): print("...done;")
 
     def resizeUsrbins(self,newL,whichUnits=None,axis=3,lDebug=False):
@@ -687,7 +693,9 @@ class Geometry():
             print(whichUnits)
             exit(1)
         for bin2mod in bins2mod:
-            bin2mod.resize(newL,axis=3)
+            whichBin,iBin=self.ret("bin",bin2mod)
+            whichBin.resize(newL,axis=3)
+            if (lDebug): print(whichBin.echo())
         if (lDebug): print("...done;")
 
     @staticmethod
