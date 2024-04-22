@@ -927,103 +927,58 @@ class Geometry():
         return myGeos
 
     @staticmethod
-    def MergeGeos(hiveGeo,gridGeo,lDebug=True,myTitle=None,prec=0.001,enlargeFact=1.1,resBins="ALL"):
+    def MergeGeos(hiveGeo,gridGeo,mapping,mapType,lDebug=True,myTitle=None):
         '''
         This method merges one FLUKA geometry onto another one.
 
         input parameters:
         - hiveGeo: Geometry instance of the hive;
         - gridGeo: Geometry instance of the grid of objects;
-        - prec: precision of identification of points proximity [cm];
-        - enlargeFact: (safety) factor for scaling infinite bodies and USRBINs;
-        - resBins: list of units of USRBINs that should be resized;
+        - mapping: dictionary:
+          . mapping["iRhg"][ii]: ii-th hive region;
+          . mapping["jRhg"][ii]: ii-th element in hive list;
+          . mapping["iRgg"][ii]: ii-th grid region;
+          . mapping["jRgg"][ii]: ii-th element in grid list;
+        - mapType:
+          . "oneHive": one hive region contains one or more grid regions;
+          . "oneGrid": one grid region is contained in one or more hive regions;
 
         The two geometries must not have common names - no check is performed
           for the time being.
-
-        All the regions of gridGeo with rCont==-1 will be matched with regions
-          of hiveGeo with rCont==1; a one-to-one mapping is established based
-          on the rCent arrays. The merged regions will still belong to gridGeo
-          and the respective region in hiveGeo will disappear.
         '''
         print("merging geometries...")
-        if (isinstance(hiveGeo,Geometry)): hiveGeo=[hiveGeo]
-        if (isinstance(gridGeo,Geometry)): gridGeo=[gridGeo]
-        if (isinstance(enlargeFact,float) or isinstance(enlargeFact,int)):
-            if (enlargeFact<=0): enlargeFact=None
-        # hiveGeo
-        iRhgs=[]; jRhgs=[]; cRhgs=[];
-        for jj,myGeo in enumerate(hiveGeo):
-            iRhgs=iRhgs+[ ii for ii,mReg in enumerate(myGeo.regs) if mReg.rCont==1 ]
-            jRhgs=jRhgs+[ jj for mReg in myGeo.regs if mReg.rCont==1 ]
-            cRhgs=cRhgs+[ mReg.rCent for mReg in myGeo.regs if mReg.rCont==1 ]
-        cRhgs=np.array(cRhgs)
-        ucRhgs=np.unique(cRhgs,axis=0)
-        # gridGeo
-        iRggs=[]; jRggs=[]; cRggs=[];
-        for jj,myGeo in enumerate(gridGeo):
-            iRggs=iRggs+[ ii for ii,mReg in enumerate(myGeo.regs) if mReg.rCont==-1 ]
-            jRggs=jRggs+[ jj for mReg in myGeo.regs if mReg.rCont==-1 ]
-            cRggs=cRggs+[ mReg.rCent for mReg in myGeo.regs if mReg.rCont==-1 ]
-        cRggs=np.array(cRggs)
-        ucRggs=np.unique(cRggs,axis=0)
-        if (lDebug):
-            print("...found %d containing regions in hive:"%(len(iRhgs)))
-            print("   ...with %d unique centers!"%(len(ucRhgs)))
-            print(iRhgs)
-            print(jRhgs)
-            print(cRhgs)
-            print(ucRhgs)
-            print("...found %d contained/sized regions in grid:"%(len(iRggs)))
-            print("   ...with %d unique centers!"%(len(ucRggs)))
-            print(iRggs)
-            print(jRggs)
-            print(cRggs)
-            print(ucRggs)
-        if (len(iRhgs)==len(ucRhgs)):
+        removeRegs=[]; jRemoveRegs=[]
+        if (mapType=="oneHive"):
             # for each location, only one hive region is concerned:
             #   merge each containing hive region into the concerned
             #   grid regions, and then remove the hive region
-            # - merge region defs
-            removeRegs=[]; jRemoveRegs=[]
-            for iRhg,jRhg in zip(iRhgs,jRhgs):
-                for iRgg,jRgg in zip(iRggs,jRggs):
-                    if (np.linalg.norm(gridGeo[jRgg].regs[iRgg].rCent-hiveGeo[jRhg].regs[iRhg].rCent)<prec):
-                        # resize infinite bodies and USRBINs
-                        if (enlargeFact is not None or resBins is not None):
-                            newL=enlargeFact*hiveGeo[jRhg].regs[iRhg].rMaxLen
-                        if (enlargeFact is not None): gridGeo[jRgg].resizeBodies(newL,lDebug=lDebug)
-                        if (resBins is not None): gridGeo[jRgg].resizeUsrbins(newL,whichUnits=resBins,lDebug=lDebug)
-                        # actually merge
-                        gridGeo[jRgg].regs[iRgg].merge(hiveGeo[jRhg].regs[iRhg])
-                        if (hiveGeo[jRhg].regs[iRhg].echoName() not in removeRegs):
-                            removeRegs.append(hiveGeo[jRhg].regs[iRhg].echoName())
-                            jRemoveRegs.append(jRhg)
+            # - merge defs
+            for iRhg,jRhg,iRgg,jRgg in zip(mapping["iRhg"],mapping["jRhg"],mapping["iRgg"],mapping["jRgg"]):
+                gridGeo[jRgg].regs[iRgg].merge(hiveGeo[jRhg].regs[iRhg])
+                if (hiveGeo[jRhg].regs[iRhg].echoName() not in removeRegs):
+                    removeRegs.append(hiveGeo[jRhg].regs[iRhg].echoName())
+                    jRemoveRegs.append(jRhg)
             # - remove merged regs
             for removeReg,jRemoveReg in zip(removeRegs,jRemoveRegs):
                 myReg,iReg=hiveGeo[jRemoveReg].ret("REG",removeReg)
                 hiveGeo[jRemoveReg].regs.pop(iReg)
-        elif(len(iRggs)==len(ucRggs)):
+        elif(mapType=="oneGridoneHive"):
             # for each location, only one grid region is concerned:
             #   merge each contained grid region into the concerned
             #   hive regions, and then remove the grid region
-            # - merge region defs
-            removeRegs=[]; jRemoveRegs=[]
-            for iRgg,jRgg in zip(iRggs,jRggs):
-                for iRhg,jRhg in zip(iRhgs,jRhgs):
-                    if (np.linalg.norm(gridGeo[jRgg].regs[iRgg].rCent-hiveGeo[jRhg].regs[iRhg].rCent)<prec):
-                        hiveGeo[jRhg].regs[iRhg].merge(gridGeo[jRgg].regs[iRgg])
-                        if (gridGeo[jRgg].regs[iRgg].echoName() not in removeRegs):
-                            removeRegs.append(gridGeo[jRgg].regs[iRgg].echoName())
-                            jRemoveRegs.append(jRgg)
+            # - merge defs
+            for iRhg,jRhg,iRgg,jRgg in zip(mapping["iRhg"],mapping["jRhg"],mapping["iRgg"],mapping["jRgg"]):
+                hiveGeo[jRhg].regs[iRhg].merge(gridGeo[jRgg].regs[iRgg])
+                if (gridGeo[jRgg].regs[iRgg].echoName() not in removeRegs):
+                    removeRegs.append(gridGeo[jRgg].regs[iRgg].echoName())
+                    jRemoveRegs.append(jRgg)
             # - remove merged regs
-            for removeReg in removeRegs:
+            for removeReg,jRemoveReg in zip(removeRegs,jRemoveRegs):
                 myReg,iReg=gridGeo[jRemoveReg].ret("REG",removeReg)
                 gridGeo[jRemoveReg].regs.pop(iReg)
         else:
-            print("...cannot merge more than a region of the hive and more than a region of the grid for a single location!")
+            print("...wrong specification of mapping: %s!"%(mapType))
             exit(1)
-            
         return Geometry.appendGeometries(hiveGeo+gridGeo,myTitle=myTitle)
 
     @staticmethod
@@ -1066,9 +1021,11 @@ class Geometry():
 
         newGeom.bods=bodies
         newGeom.regs=regions
-        
+
+        newGeom,myGeo,mapping,mapType=MapGridLocsOntoHiveLocs(newGeom,myGeo,lDebug=lDebug)
+        mergedGeo=Geometry.MergeGeos(newGeom,myGeo,mapping,mapType,lDebug=lDebug,myTitle=myGeo.title)
         print('...done.')
-        return Geometry.MergeGeos(newGeom,myGeo,lDebug=lDebug,myTitle=myGeo.title)
+        return mergedGeo
 
 def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
     '''
@@ -1106,9 +1063,117 @@ def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
         
     return myGeos
 
+def MapGridLocsOntoHiveLocs(hiveGeo,gridGeo,lDebug=True,prec=0.001):
+    '''
+    This method maps a grid of FLUKA geometries onto the hive.
+
+    input parameters:
+    - hiveGeo: list of Geometry instance(s) of the hive;
+    - gridGeo: list of Geometry instance(s) of the grid;
+    - prec: precision of identification of points proximity [cm];
+
+    output parameters:
+    - mapping: dictionary:
+      . mapping["iRhg"][ii]: ii-th hive region;
+      . mapping["jRhg"][ii]: ii-th element in hive list;
+      . mapping["iRgg"][ii]: ii-th grid region;
+      . mapping["jRgg"][ii]: ii-th element in grid list;
+    - mapType:
+      . "oneHive": one hive region contains one or more grid regions;
+      . "oneGrid": one grid region is contained in one or more hive regions;
+
+    All the regions of gridGeo with rCont==-1 will be matched with regions
+      of hiveGeo with rCont==1; a one-to-one mapping is established based
+      on the rCent arrays.
+    '''
+    print("mapping grid and hive geometries...")
+    if (isinstance(hiveGeo,Geometry)): hiveGeo=[hiveGeo]
+    if (isinstance(gridGeo,Geometry)): gridGeo=[gridGeo]
+    # hiveGeo
+    iRhgs=[]; jRhgs=[]; cRhgs=[];
+    for jj,myGeo in enumerate(hiveGeo):
+        iRhgs=iRhgs+[ ii for ii,mReg in enumerate(myGeo.regs) if mReg.rCont==1 ]
+        jRhgs=jRhgs+[ jj for mReg in myGeo.regs if mReg.rCont==1 ]
+        cRhgs=cRhgs+[ mReg.rCent for mReg in myGeo.regs if mReg.rCont==1 ]
+    cRhgs=np.array(cRhgs)
+    ucRhgs=np.unique(cRhgs,axis=0)
+    # gridGeo
+    iRggs=[]; jRggs=[]; cRggs=[];
+    for jj,myGeo in enumerate(gridGeo):
+        iRggs=iRggs+[ ii for ii,mReg in enumerate(myGeo.regs) if mReg.rCont==-1 ]
+        jRggs=jRggs+[ jj for mReg in myGeo.regs if mReg.rCont==-1 ]
+        cRggs=cRggs+[ mReg.rCent for mReg in myGeo.regs if mReg.rCont==-1 ]
+    cRggs=np.array(cRggs)
+    ucRggs=np.unique(cRggs,axis=0)
+    # output
+    mapping={"iRhg":[],"jRhg":[],"iRgg":[],"jRgg":[]}
+    if (lDebug):
+        print("...found %d containing regions in hive:"%(len(iRhgs)))
+        print("   ...with %d unique centers!"%(len(ucRhgs)))
+        print(iRhgs)
+        print(jRhgs)
+        print(cRhgs)
+        print(ucRhgs)
+        print("...found %d contained/sized regions in grid:"%(len(iRggs)))
+        print("   ...with %d unique centers!"%(len(ucRggs)))
+        print(iRggs)
+        print(jRggs)
+        print(cRggs)
+        print(ucRggs)
+    if (len(iRhgs)==len(ucRhgs)):
+        # for each location, only one hive region is concerned:
+        #   merge each containing hive region into the concerned
+        #   grid region(s), and then remove the hive region
+        mapType="oneHive"
+        for iRhg,jRhg in zip(iRhgs,jRhgs):
+            for iRgg,jRgg in zip(iRggs,jRggs):
+                if (np.linalg.norm(gridGeo[jRgg].regs[iRgg].rCent-hiveGeo[jRhg].regs[iRhg].rCent)<prec):
+                    mapping["iRhg"].append(iRhg)
+                    mapping["jRhg"].append(jRhg)
+                    mapping["iRgg"].append(iRgg)
+                    mapping["jRgg"].append(jRgg)
+    elif(len(iRggs)==len(ucRggs)):
+        # for each location, only one grid region is concerned:
+        #   merge each contained grid region into the concerned
+        #   hive region(s), and then remove the grid region
+        mapType="oneGrid"
+        for iRgg,jRgg in zip(iRggs,jRggs):
+            for iRhg,jRhg in zip(iRhgs,jRhgs):
+                if (np.linalg.norm(gridGeo[jRgg].regs[iRgg].rCent-hiveGeo[jRhg].regs[iRhg].rCent)<prec):
+                    mapping["iRhg"].append(iRhg)
+                    mapping["jRhg"].append(jRhg)
+                    mapping["iRgg"].append(iRgg)
+                    mapping["jRgg"].append(jRgg)
+    else:
+        print("...cannot map more than a region of the hive and more than a region of the grid for a single location!")
+        exit(1)
+        
+    return hiveGeo, gridGeo, mapping, mapType
+
+def ResizeBodies(hiveGeo,gridGeo,mapping,lDebug=True,enlargeFact=1.1):
+    if (enlargeFact is not None):
+        print("resizing grid bodies...")
+        for iRhg,jRhg,iRgg,jRgg in zip(mapping["iRhg"],mapping["jRhg"],mapping["iRgg"],mapping["jRgg"]):
+            newL=enlargeFact*hiveGeo[jRhg].regs[iRhg].rMaxLen
+            gridGeo[jRgg].resizeBodies(newL,lDebug=lDebug)
+        print("...done;")
+    return gridGeo
+
+def ResizeUSRBINs(hiveGeo,gridGeo,mapping,lDebug=True,enlargeFact=1.1,resBins="ALL"):
+    if (enlargeFact is not None and resBins is not None):
+        print("resizing USRBINs...")
+        for iRhg,jRhg,iRgg,jRgg in zip(mapping["iRhg"],mapping["jRhg"],mapping["iRgg"],mapping["jRgg"]):
+            newL=enlargeFact*hiveGeo[jRhg].regs[iRhg].rMaxLen
+            gridGeo[jRgg].resizeUsrbins(newL,whichUnits=resBins,lDebug=lDebug)
+        print("...done;")
+    return gridGeo
+
 if (__name__=="__main__"):
     lDebug=False
     lGeoDirs=False
+    echoHiveInp="hive.inp"
+    echoGridInp="grid.inp"
+    osRegNames=["OUTER"]
     # # - manipulate a geometry
     # caloCrysGeo=Geometry.fromInp("caloCrys.inp")
     # myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
@@ -1118,6 +1183,8 @@ if (__name__=="__main__"):
     # - test generation of geometry
     R=75
     dR=50
+    Rmin=R
+    Rmax=R+dR
     NR=2
     Tmin=-20.0 # theta [degs] --> range: -Tmax:Tmax
     Tmax=20.0  # theta [degs] --> range: -Tmax:Tmax
@@ -1125,26 +1192,30 @@ if (__name__=="__main__"):
     Pmin=-7.5
     Pmax=7.5   # phi [degs] --> range: -Pmax:Pmax
     NP=5       # number of steps (i.e. grid cells)
-    # Tmax=3.0  # theta [degs] --> range: -Tmax:Tmax
-    # NT=4      # number of steps (i.e. grid cells)
-    # Pmax=2.0  # phi [degs] --> range: -Pmax:Pmax
-    # NP=3      # number of steps (i.e. grid cells)
     
     # - hive geometry
-    HiveGeo=Geometry.DefineHive_SphericalShell(R,R+dR,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
-    # HiveGeo.echo("hive.inp")
+    HiveGeo=Geometry.DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
+    if (echoHiveInp is not None): HiveGeo.echo(echoHiveInp)
     
-    # - gridded crystals
-    #   acquire geometries
+    # - gridded geometry
+    #   acquire prototype geometries
     fileNames=[ "caloCrys_02.inp" ] ; geoNames=fileNames
     myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames,lMakeRotatable=not lGeoDirs);
+    #   generate gridded geometry:
+    #   . generate grid
     cellGrid=grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
+    #   . associate a prototype to each cell
     myProtoList=[ "caloCrys_02.inp" for ii in range(len(cellGrid)) ]
-    GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lGeoDirs=lGeoDirs,lDebug=lDebug)
-    
-    (Geometry.appendGeometries(GridGeo)).echo("grid.inp")
+    lTrigScoring=[ (1<=ii and ii<=2) for ii in range(len(cellGrid)) ]
+    #   . generate geometry
+    GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=osRegNames,lGeoDirs=lGeoDirs,lDebug=lDebug)
+    if (echoGridInp is not None): (Geometry.appendGeometries(GridGeo)).echo(echoGridInp)
     
     # - merge geometries
-    mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,lDebug=lDebug,resBins=25)
+    #   get mapping (HiveGeo and GridGeo become lists, in case they are simple instances of Geoemtry)
+    HiveGeo,GridGeo,mapping,mapType=MapGridLocsOntoHiveLocs(HiveGeo,GridGeo,lDebug=lDebug)
+    GridGeo=ResizeBodies(HiveGeo,GridGeo,mapping,lDebug=lDebug)
+    GridGeo=ResizeUSRBINs(HiveGeo,GridGeo,mapping,lDebug=lDebug,resBins=25)
+    mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,mapping,mapType,lDebug=lDebug)
     mergedGeo.reAssiginUSRBINunits(nMaxBins=35*35*5000,usedUnits=26)
     mergedGeo.echo("merged.inp")
