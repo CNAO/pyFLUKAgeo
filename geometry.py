@@ -14,7 +14,7 @@ from scorings import Usrbin
 class Geometry():
     '''
     - name-based FLUKA geometry defition;
-    - NO support of LATTICE cards;
+    - no support for LATTICE cards at parsing;
     - NO support for #include cards or geo defitions in files other than that
        being parsed;
     - comments:
@@ -116,6 +116,16 @@ class Geometry():
             else:
                 for iEntry,myEntry in enumerate(self.bods):
                     if (myEntry.echoName()==myValue):
+                        lFound=True
+                        break
+        elif (myKey.upper().startswith("LAT")):
+            if (myValue.upper()=="ALL"):
+                myEntry=[ reg.echoLatticeName() for reg in self.regs if reg.isLattice() ]
+                iEntry=[ ii for ii in range(len(self.regs)) if self.regs[ii].isLattice() ]
+                lFound=True
+            else:
+                for iEntry,myEntry in enumerate(self.regs):
+                    if (myEntry.echoLatticeName()==myValue):
                         lFound=True
                         break
         elif (myKey.upper().startswith("REG")):
@@ -374,6 +384,18 @@ class Geometry():
             ff.write("* \n")
             ff.close()
             print("...done;")
+        elif (what.upper().startswith("LAT")):
+            LatNames=self.ret("LAT","ALL")
+            if (len(LatNames)>0):
+                print("saving LATTICE cards in file %s..."%(oFileName))
+                ff=open(oFileName,dMode)
+                ff.write("* \n")
+                for tmpReg in self.regs:
+                    if (tmpReg.isLattice()):
+                        ff.write("%s\n"%(tmpReg.echo(lLat=True)))
+                ff.write("* \n")
+                ff.close()
+                print("...done;")
         elif (what.upper().startswith("TRANSF")):
             print("saving ROT-DEFI cards in file %s..."%(oFileName))
             ff=open(oFileName,dMode)
@@ -413,6 +435,8 @@ class Geometry():
                               lSplit=False,what="bodies",dMode="w")
                     self.echo(oFileName.replace(".inp","_regions.inp",1),\
                               lSplit=False,what="regions",dMode="w")
+                    self.echo(oFileName.replace(".inp","_lattices.inp",1),\
+                              lSplit=False,what="lattices",dMode="w")
                     self.echo(oFileName.replace(".inp","_assignmats.inp",1),\
                               lSplit=False,what="materials",dMode="w")
                     if (len(self.tras)>0):
@@ -437,6 +461,7 @@ class Geometry():
                     ff=open(oFileName,"a")
                     ff.write("%-10s\n"%("END"))
                     ff.close()
+                    self.echo(oFileName,lSplit=False,what="lattices",dMode="a")
                     self.echo(oFileName.replace(".geo","_assignmats.inp",1),\
                               lSplit=False,what="materials",dMode="w")
                     if (len(self.tras)>0):
@@ -457,6 +482,9 @@ class Geometry():
                 self.echo(oFileName,lSplit=False,what="regions",dMode="a")
                 ff=open(oFileName,"a")
                 ff.write("%-10s\n"%("END"))
+                ff.close()
+                self.echo(oFileName,lSplit=False,what="lattices",dMode="a")
+                ff=open(oFileName,"a")
                 ff.write("%-10s\n"%("GEOEND"))
                 ff.close()
                 if (len(self.tras)>0):
@@ -486,7 +514,7 @@ class Geometry():
         new.title=myGeo.title
         return new
 
-    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lGeoDirs=False,lDebug=False):
+    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lGeoDirs=False,lLatt=False,lDebug=False):
         '''
         Bodies are applied the transformation as requested by the user:
         * first, rotation (meant to be expressed in ref sys of the object to rotate);
@@ -500,6 +528,9 @@ class Geometry():
           in a right-handed system.
         '''
         print("applying solid transformation(s)...")
+        # the use of LATTICE cards and geometry directives are mutually exclusive,
+        #    with LATTICE cards ruling:
+        if (lLatt and lGeoDirs): lGeoDirs=False
         if (myMat is None and myTheta is None and dd is None):
             print("...no transformation provided!")
         else:
@@ -507,9 +538,9 @@ class Geometry():
             myName="ToFinPos"
             if (myMat is not None):
                 print("...applying transformation expressed by matrix to geometry...")
-                if (not lGeoDirs):
-                    for ii in range(len(self.bods)):
-                        self.bods[ii].rotate(myMat=myMat,myTheta=None,myAxis=None,\
+                if (not lGeoDirs and not lLatt):
+                    for myBod in self.bods:
+                        myBod.rotate(myMat=myMat,myTheta=None,myAxis=None,\
                                              lDegs=lDegs,lDebug=lDebug)
                 thetas=myMat.GetGimbalAngles() # [degs]
                 for myAx,myTh in enumerate(thetas,1):
@@ -523,28 +554,28 @@ class Geometry():
                         exit(1)
                     for myT,myAx in zip(myTheta,myAxis):
                         # iteratively call this same method, on a single angle
-                        self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lGeoDirs=lGeoDirs,lDebug=lDebug)
+                        self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lGeoDirs=lGeoDirs,lLatt=lLatt,lDebug=lDebug)
                 elif (myTheta!=0.0):
                     print("...applying rotation by %f degs around axis %d..."%\
                           (myTheta,myAxis))
-                    if (not lGeoDirs):
-                        for ii in range(len(self.bods)):
-                            self.bods[ii].rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,\
+                    if (not lGeoDirs and not lLatt):
+                        for myBod in self.bods:
+                            myBod.rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,\
                                                  lDegs=lDegs,lDebug=lDebug)
                     ROTDEFIlist.append(RotDefi(myAx=myAxis,myTh=myTheta))
             if (dd is not None):
                 print("...applying traslation array [%f,%f,%f] cm..."%\
                       (dd[0],dd[1],dd[2]))
                 if (not lGeoDirs):
-                    for ii in range(len(self.bods)):
-                        self.bods[ii].traslate(dd=dd)
+                    for myBod in self.bods:
+                        myBod.traslate(dd=dd)
                 myDD=-dd
                 if (isinstance(myDD,list)):
                     myDD=np.array(DD)
                 ROTDEFIlist.append(RotDefi(myDD=myDD))
             if (len(ROTDEFIlist)>0):
                 # add transformation to actual position...
-                lCreate=False
+                lCreate=lLatt
                 if ( lGeoDirs ):
                     # ...if $start_tranform directives are used
                     myEntry, iEntry = self.ret("TRANSF",myName)
@@ -564,8 +595,12 @@ class Geometry():
                     myTras.AddRotDefis(reversed(deepcopy(ROTDEFIlist)),iAdd=0)
                 # - link solid trasformation
                 if (lGeoDirs):
-                    for ii in range(len(self.bods)):
-                        self.bods[ii].linkTransformName(Tname=myName)
+                    for myBod in self.bods:
+                        myBod.linkTransformName(Tname=myName)
+                if (lLatt):
+                    for myReg in self.regs:
+                        myReg.assignTrasf(myTrasfName=myName)
+                    
         print("...done.")
 
     def rename(self,newName,lNotify=True):
@@ -583,24 +618,13 @@ class Geometry():
             myBod.rename(newBodyNames[-1],lNotify=lNotify)
         for iReg,myReg in enumerate(self.regs):
             myReg.rename(newNameFmt%(iReg+1),lNotify=lNotify)
+            if (myReg.isLattice()):
+                myReg.assignLat(myLatName=newNameFmt%(iReg+1))
             myReg.BodyNameReplaceInDef(oldBodyNames,newBodyNames)
-        print("CAZZO!!")
-        for ii,TT in enumerate(self.tras):
-            print(ii)
-            print(TT.echo())
-            print("COMMENT:",TT.comment,id(self.tras[ii].comment))
         for iTras,myTras in enumerate(self.tras):
             oldTrasNames.append(myTras.echoName())
             newTrasNames.append(newNameFmt%(iTras+1))
-            print("BEFORE!!",iTras)
-            for ii,TT in enumerate(self.tras):
-                print(ii)
-                print(TT.echo())
             myTras.rename(newTrasNames[-1],lNotify=lNotify)
-            print("AFTER!!",iTras)
-            for ii,TT in enumerate(self.tras):
-                print(ii)
-                print(TT.echo())
         for iBin,myBin in enumerate(self.bins):
             myBin.rename(newNameFmt%(iBin+1),lNotify=lNotify)
             if (myBin.isLinkedToTransform()):
@@ -620,10 +644,19 @@ class Geometry():
         for myBod in self.bods:
             if (myBod.isLinkedToTransform()):
                 if (myBod.retTransformName() not in oldTrasNames):
-                    print("cannot find name of transformation for moving geo: %s!"%(myBod.retTransformName()))
+                    print("cannot find name of transformation for moving body:")
+                    print(myBod.echo())
                     exit(1)
                 ii=oldTrasNames.index(myBod.retTransformName())
                 myBod.linkTransformName(Tname=newTrasNames[ii])
+        for myReg in self.regs:
+            if (myReg.isLattice()):
+                if (myReg.echoTransformName() not in oldTrasNames):
+                    print("cannot find name of transformation for moving LATTICE region:")
+                    print(myReg.echo())
+                    exit(1)
+                ii=oldTrasNames.index(myReg.echoTransformName())
+                myReg.assignTrasf(myTrasfName=newTrasNames[ii])
         print("...done.")
 
     def flagRegs(self,whichRegs,rCont,rCent):
@@ -946,7 +979,7 @@ class Geometry():
         return newGeom
 
     @staticmethod
-    def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,osRegNames=[],lTrigScoring=None,lGeoDirs=False,lDebug=True):
+    def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,osRegNames=[],lLattice=False,lTrigScoring=None,lGeoDirs=False,lDebug=True):
         '''
         This method defines a list of FLUKA geometry representing a grid of objects.
 
@@ -965,8 +998,9 @@ class Geometry():
                         a copy of the scoring cards declared with the prototype;
         '''
         if (lTrigScoring is None): lTrigScoring=True
-        if (not isinstance(lTrigScoring,list)): lTrigScoring=[ lTrigScoring for ii in range(myGrid)]
+        if (not isinstance(lTrigScoring,list)): lTrigScoring=[ lTrigScoring for ii in range(myGrid) ]
         myGeos=[]
+        if (lLattice): protoSeen={ key: -1 for key in list(myProtoGeos) }
         # loop over locations, to clone prototypes
         for iLoc,myLoc in enumerate(myGrid):
             if (myProtoList[iLoc] not in myProtoGeos):
@@ -974,17 +1008,42 @@ class Geometry():
                         myProtoList[iLoc]))
                 exit(1)
             # - clone prototype
-            myGeo=Geometry.DeepCopy(myProtoGeos[myProtoList[iLoc]],lTrigScoring=lTrigScoring[iLoc])
+            if ( not lLattice or protoSeen[myProtoList[iLoc]]==-1 ):
+                myGeo=Geometry.DeepCopy(myProtoGeos[myProtoList[iLoc]],lTrigScoring=lTrigScoring[iLoc])
+                if (lLattice): protoSeen[myProtoList[iLoc]]=iLoc
+            else:
+                myGeo=Geometry()
+                myReg=Region(myName="LATREG"); myReg.assignLat(); myReg.material="VACUUM"
+                myGeo.add(myReg,what="REG")
             # - move clone to requested location/orientation
             #   NB: give priority to angles/axis wrt matrices, for higher
             #       numerical accuracy in final .inp file
             if (len(myLoc.ret("ANGLE"))>0):
-                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myTheta=myLoc.ret("ANGLE"),myAxis=myLoc.ret("AXIS"),lGeoDirs=lGeoDirs,lDebug=lDebug)
+                if (not lLattice or iLoc==protoSeen[myProtoList[iLoc]]):
+                    dd=myLoc.ret("POINT")
+                    myTheta=myLoc.ret("ANGLE")
+                    myAxis=myLoc.ret("AXIS")
+                else:
+                    protoLoc=myGrid.ret(what="LOC",iEl=iLoc)
+                    dd=myLoc.ret("POINT")-protoLoc.ret("POINT")
+                    myTheta=[ -angle for angle in reversed(protoLoc.ret("ANGLE")) ]+myLoc.ret("ANGLE")
+                    myAxis=[ axis for axis in reversed(protoLoc.ret("AXIS")) ]+myLoc.ret("AXIS")
+                myGeo.solidTrasform(dd=dd,myTheta=myTheta,myAxis=myAxis,lGeoDirs=lGeoDirs,lLatt=lLattice,lDebug=lDebug)
             else:
-                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myMat=myLoc.ret("MATRIX"),lGeoDirs=lGeoDirs,lDebug=lDebug)
+                if (not lLattice or iLoc==protoSeen[myProtoList[iLoc]]):
+                    dd=myLoc.ret("POINT")
+                    myMat=myLoc.ret("MATRIX")
+                else:
+                    protoLoc=myGrid.ret(what="LOC",iEl=iLoc)
+                    dd=myLoc.ret("POINT")-protoLoc.ret("POINT")
+                    myMat=myLoc.ret("MATRIX").mulMat(protoLoc.ret("MATRIX").inv())
+                myGeo.solidTrasform(dd=dd,myMat=myMat,lGeoDirs=lGeoDirs,lLatt=lLattice,lDebug=lDebug)
             # - flag the region(s) outside the prototypes or that should be sized
             #   by the hive cells
-            myGeo.flagRegs(osRegNames,-1,myLoc.ret("POINT"))
+            if (not lLattice or iLoc==protoSeen[myProtoList[iLoc]]):
+                myGeo.flagRegs(osRegNames,-1,myLoc.ret("POINT"))
+            else:
+                myGeo.flagRegs(["LATREG"],-1,myLoc.ret("POINT"))
             # - rename the clone
             baseName="GR%03d"%(iLoc)
             myGeo.rename(baseName)
@@ -1025,7 +1084,10 @@ class Geometry():
             #   grid regions, and then remove the hive region
             # - merge defs
             for iRhg,jRhg,iRgg,jRgg in zip(mapping["iRhg"],mapping["jRhg"],mapping["iRgg"],mapping["jRgg"]):
-                gridGeo[jRgg].regs[iRgg].merge(hiveGeo[jRhg].regs[iRhg])
+                if (gridGeo[jRgg].regs[iRgg].isLattice()):
+                    gridGeo[jRgg].regs[iRgg].definition=hiveGeo[jRhg].regs[iRhg].definition
+                else:
+                    gridGeo[jRgg].regs[iRgg].merge(hiveGeo[jRhg].regs[iRhg])
                 if (hiveGeo[jRhg].regs[iRhg].echoName() not in removeRegs):
                     removeRegs.append(hiveGeo[jRhg].regs[iRhg].echoName())
                     jRemoveRegs.append(jRhg)
@@ -1242,6 +1304,7 @@ def ResizeUSRBINs(hiveGeo,gridGeo,mapping,lDebug=True,enlargeFact=1.1,resBins="A
 if (__name__=="__main__"):
     lDebug=False
     lGeoDirs=False
+    lLattice=True
     echoHiveInp="hive.inp"
     echoGridInp="grid.inp"
     osRegNames=["OUTER"]
@@ -1279,7 +1342,7 @@ if (__name__=="__main__"):
     myProtoList=[ "caloCrys_02.inp" for ii in range(len(cellGrid)) ]
     lTrigScoring=[ (1<=ii and ii<=2) for ii in range(len(cellGrid)) ]
     #   . generate geometry
-    GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=osRegNames,lTrigScoring=lTrigScoring,lGeoDirs=lGeoDirs,lDebug=lDebug)
+    GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=osRegNames,lLattice=lLattice,lTrigScoring=lTrigScoring,lGeoDirs=lGeoDirs,lDebug=lDebug)
     if (echoGridInp is not None): (Geometry.appendGeometries(GridGeo)).echo(echoGridInp)
     
     # - merge geometries

@@ -12,7 +12,7 @@ class Region(GeoObject):
       definition lines, NO comments headed by !
     - a region definition always starts at column 1;
     - no check of length of lines for region definition;
-    - no support for LATTICE;
+    - no support for LATTICE cards at parsing;
     - ASSIGNMA cards: only 1:1 material:region assignment, NO material
       assignment for decay radiation simulation, NO magnetic/electric fields;
     '''
@@ -22,6 +22,8 @@ class Region(GeoObject):
         self.neigh=5
         self.definition=""
         self.material="BLACKHOLE"
+        self.LatticeName=None
+        self.TransformName=None
         # additional fields
         self.initCont()
 
@@ -65,6 +67,14 @@ class Region(GeoObject):
     def assignMat(self,myMaterial):
         self.material=myMaterial
 
+    def assignLat(self,myLatName=None):
+        if (myLatName is None): myLatName=self.echoName()
+        self.LatticeName=myLatName
+
+    def assignTrasf(self,myTrasfName=None):
+        if (myTrasfName is None): myTrasfName=self.echoName()
+        self.TransformName=myTrasfName
+
     def addZone(self,myDef,nSpace=16):
         if (self.isNonEmpty()):
             if ( '|' not in self.definition ):
@@ -77,13 +87,29 @@ class Region(GeoObject):
 
     def isNonEmpty(self):
         return len(self.definition)>0
+
+    def isLattice(self):
+        return self.LatticeName is not None
         
-    def echo(self,lMat=False,lFree=True,maxLen=MaxLineLength,header=LineHeader,lMultiLine=True,\
+    def isLinkedToTransform(self):
+        return self.TransformName is not None
+
+    def echoLatticeName(self):
+        return self.LatticeName
+    
+    def echoTransformName(self):
+        return self.TransformName
+    
+    def echo(self,lMat=False,lLat=False,lFree=True,maxLen=MaxLineLength,header=LineHeader,lMultiLine=True,\
              remSpaceAfters=remSpaceAfters,addSpaceAfters=addSpaceAfters):
         '''take into account comment'''
         if (lMat):
             # echo ASSIGNMA card
             return GeoObject.echoComm(self)+"ASSIGNMA  %10s%10s" % ( self.material, self.echoName() )
+        elif (lLat):
+            # echo LATTICE card
+            return GeoObject.echoComm(self)+"%-10s%10s%20s%10s%20s%-10s" % ( "LATTICE", self.echoName(), "", \
+                                                        self.echoLatticeName(), "", self.echoTransformName() )
         else:
             myString=""
             myStrings=["%-8s"%(self.echoName()),"%4d"%(self.neigh)]
