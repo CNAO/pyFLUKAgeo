@@ -128,6 +128,40 @@ class Geometry():
                     if (myEntry.echoName()==myValue):
                         lFound=True
                         break
+        elif (myKey.upper().startswith("TRANSFLINKEDTOBODY")):
+            if (myValue.upper()=="ALL"):
+                myEntry=list(set([ body.retTransformName() for body in self.bods if body.isLinkedToTransform() ]))
+                iEntry=[]
+                for tEntry in myEntry:
+                    mE,iE=self.ret("transf",tEntry)
+                    iEntry.append(iE)
+                lFound=True
+            else:
+                mE,iE=self.ret("body",myValue)
+                if (mE is not None):
+                    if (mE.isLinkedToTransform()):
+                        myEntry,iEntry=self.ret("transf",mE.retTransformName())
+                        lFound=myEntry is None
+                else:
+                    print("cannot find body named %s!"%(myValue))
+                    exit(1)
+        elif (myKey.upper().startswith("TRANSFLINKEDTOUSRBIN")):
+            if (myValue.upper()=="ALL"):
+                myEntry=list(set([ mbin.retTransformName() for mbin in self.bins if mbin.isLinkedToTransform() ]))
+                iEntry=[]
+                for tEntry in myEntry:
+                    mE,iE=self.ret("transf",tEntry)
+                    iEntry.append(iE)
+                lFound=True
+            else:
+                mE,iE=self.ret("usrbin",myValue)
+                if (mE is not None):
+                    if (mE.isLinkedToTransform()):
+                        myEntry,iEntry=self.ret("transf",mE.retTransformName())
+                        lFound=myEntry is None
+                else:
+                    print("cannot find USRBIN named %s!"%(myValue))
+                    exit(1)
         elif (myKey.upper().startswith("TRANSF")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ tras.echoName() for tras in self.tras ]
@@ -433,6 +467,25 @@ class Geometry():
         else:
             print("...what should I echo? %s NOT reconised!"%(what))
 
+    @staticmethod
+    def DeepCopy(myGeo,lTrigScoring=True):
+        new=Geometry()
+        new.bods=deepcopy(myGeo.bods)
+        new.regs=deepcopy(myGeo.regs)
+        myTras=deepcopy(myGeo.tras)
+        if (lTrigScoring):
+            new.bins=deepcopy(myGeo.bins)
+        else:
+            # do not copy USRBINs and remove uselss transformations
+            allTrasfNames,iEntry=myGeo.ret("TRANSF","ALL")
+            bodTrasfNames,iEntry=myGeo.ret("TRANSFLINKEDTOBODY","ALL")
+            for iT,myT in reversed(list(enumerate(allTrasfNames))):
+                if (myT not in bodTrasfNames):
+                    myTras.pop(iT)
+        new.tras=myTras
+        new.title=myGeo.title
+        return new
+
     def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lGeoDirs=False,lDebug=False):
         '''
         Bodies are applied the transformation as requested by the user:
@@ -492,23 +545,23 @@ class Geometry():
             if (len(ROTDEFIlist)>0):
                 # add transformation to actual position...
                 lCreate=False
-                if ( lGeoDirs and not lCreate ):
+                if ( lGeoDirs ):
                     # ...if $start_tranform directives are used
                     myEntry, iEntry = self.ret("TRANSF",myName)
                     lCreate=myEntry is None
                 if ( not lCreate ):
                     # ...if USRBINs are present without ROTPRBIN cards
                     for myBin in self.bins:
-                        if ( myBin.returnTrasf()=="" ):
+                        if ( not myBin.isLinkedToTransform() ):
                             lCreate=True
-                            myBin.assignTrasf(myName)
+                            myBin.assignTransformName(myName)
                 if (lCreate):
                     print("...adding the final transformation to (existing) list of transformations...")
                     self.add(Transformation(myID=len(self.tras),myName=myName),what="tras")
                 # - add list of ROT-DEFIs for the solid transformation to the list
                 #   of existing transformation
                 for myTras in self.tras:
-                    myTras.AddRotDefis(reversed(ROTDEFIlist),iAdd=0)
+                    myTras.AddRotDefis(reversed(deepcopy(ROTDEFIlist)),iAdd=0)
                 # - link solid trasformation
                 if (lGeoDirs):
                     for ii in range(len(self.bods)):
@@ -524,25 +577,38 @@ class Geometry():
         newNameFmt=newName+"%0"+"%d"%(maxLenName-len(newName))+"d"
         oldBodyNames=[]; newBodyNames=[]
         oldTrasNames=[]; newTrasNames=[]
-        for iBody in range(len(self.bods)):
-            oldBodyNames.append(self.bods[iBody].echoName())
+        for iBody,myBod in enumerate(self.bods):
+            oldBodyNames.append(myBod.echoName())
             newBodyNames.append(newNameFmt%(iBody+1))
-            self.bods[iBody].rename(newBodyNames[-1],lNotify=lNotify)
-        for iReg in range(len(self.regs)):
-            self.regs[iReg].rename(newNameFmt%(iReg+1),lNotify=lNotify)
-            self.regs[iReg].BodyNameReplaceInDef(oldBodyNames,newBodyNames)
-        for iTras in range(len(self.tras)):
-            oldTrasNames.append(self.tras[iTras].echoName())
+            myBod.rename(newBodyNames[-1],lNotify=lNotify)
+        for iReg,myReg in enumerate(self.regs):
+            myReg.rename(newNameFmt%(iReg+1),lNotify=lNotify)
+            myReg.BodyNameReplaceInDef(oldBodyNames,newBodyNames)
+        print("CAZZO!!")
+        for ii,TT in enumerate(self.tras):
+            print(ii)
+            print(TT.echo())
+            print("COMMENT:",TT.comment,id(self.tras[ii].comment))
+        for iTras,myTras in enumerate(self.tras):
+            oldTrasNames.append(myTras.echoName())
             newTrasNames.append(newNameFmt%(iTras+1))
-            self.tras[iTras].rename(newTrasNames[-1],lNotify=lNotify)
-        for iBin in range(len(self.bins)):
-            self.bins[iBin].rename(newNameFmt%(iBin+1),lNotify=lNotify)
-            trName=self.bins[iBin].returnTrasf()
-            if (len(trName)>0):
+            print("BEFORE!!",iTras)
+            for ii,TT in enumerate(self.tras):
+                print(ii)
+                print(TT.echo())
+            myTras.rename(newTrasNames[-1],lNotify=lNotify)
+            print("AFTER!!",iTras)
+            for ii,TT in enumerate(self.tras):
+                print(ii)
+                print(TT.echo())
+        for iBin,myBin in enumerate(self.bins):
+            myBin.rename(newNameFmt%(iBin+1),lNotify=lNotify)
+            if (myBin.isLinkedToTransform()):
+                trName=myBin.retTransformName()
                 lFound=False
                 for oldTrasName,newTrasName in zip(oldTrasNames,newTrasNames):
                     if (trName==oldTrasName):
-                        self.bins[iBin].assignTrasf(newTrasName)
+                        myBin.assignTransformName(newTrasName)
                         lFound=True
                         break
                 if (not lFound):
@@ -551,13 +617,13 @@ class Geometry():
             else:
                 print("Geometry.rename(): USRBIN with no original name in geometry!")
                 exit(1)
-        for iBody in range(len(self.bods)):
-            if (self.bods[iBody].retTransformName() is not None):
-                if (self.bods[iBody].retTransformName() not in oldTrasNames):
-                    print("cannot find name of transformation for moving geo: %s!"%(self.bods[iBody].retTransformName()))
+        for myBod in self.bods:
+            if (myBod.isLinkedToTransform()):
+                if (myBod.retTransformName() not in oldTrasNames):
+                    print("cannot find name of transformation for moving geo: %s!"%(myBod.retTransformName()))
                     exit(1)
-                ii=oldTrasNames.index(self.bods[iBody].retTransformName())
-                self.bods[iBody].linkTransformName(Tname=newTrasNames[ii])
+                ii=oldTrasNames.index(myBod.retTransformName())
+                myBod.linkTransformName(Tname=newTrasNames[ii])
         print("...done.")
 
     def flagRegs(self,whichRegs,rCont,rCent):
@@ -692,10 +758,11 @@ class Geometry():
             print("Wrong indication of USRBINs for resizing!")
             print(whichUnits)
             exit(1)
-        for bin2mod in bins2mod:
-            whichBin,iBin=self.ret("bin",bin2mod)
-            whichBin.resize(newL,axis=3)
-            if (lDebug): print(whichBin.echo())
+        if (bins2mod is not None):
+            for bin2mod in bins2mod:
+                whichBin,iBin=self.ret("bin",bin2mod)
+                whichBin.resize(newL,axis=3)
+                if (lDebug): print(whichBin.echo())
         if (lDebug): print("...done;")
 
     @staticmethod
@@ -879,7 +946,7 @@ class Geometry():
         return newGeom
 
     @staticmethod
-    def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,osRegNames=[],lGeoDirs=False,lDebug=True):
+    def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,osRegNames=[],lTrigScoring=None,lGeoDirs=False,lDebug=True):
         '''
         This method defines a list of FLUKA geometry representing a grid of objects.
 
@@ -894,7 +961,11 @@ class Geometry():
                        part of the prototypes, to be 'subtracted' from the region
                        definition of the hive cells, that should be sized by the
                        regions of the hive cell;
+        - lTrigScoring: this list states if the gridded geometries should have
+                        a copy of the scoring cards declared with the prototype;
         '''
+        if (lTrigScoring is None): lTrigScoring=True
+        if (not isinstance(lTrigScoring,list)): lTrigScoring=[ lTrigScoring for ii in range(myGrid)]
         myGeos=[]
         # loop over locations, to clone prototypes
         for iLoc,myLoc in enumerate(myGrid):
@@ -903,7 +974,7 @@ class Geometry():
                         myProtoList[iLoc]))
                 exit(1)
             # - clone prototype
-            myGeo=deepcopy(myProtoGeos[myProtoList[iLoc]])
+            myGeo=Geometry.DeepCopy(myProtoGeos[myProtoList[iLoc]],lTrigScoring=lTrigScoring[iLoc])
             # - move clone to requested location/orientation
             #   NB: give priority to angles/axis wrt matrices, for higher
             #       numerical accuracy in final .inp file
@@ -1208,7 +1279,7 @@ if (__name__=="__main__"):
     myProtoList=[ "caloCrys_02.inp" for ii in range(len(cellGrid)) ]
     lTrigScoring=[ (1<=ii and ii<=2) for ii in range(len(cellGrid)) ]
     #   . generate geometry
-    GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=osRegNames,lGeoDirs=lGeoDirs,lDebug=lDebug)
+    GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=osRegNames,lTrigScoring=lTrigScoring,lGeoDirs=lGeoDirs,lDebug=lDebug)
     if (echoGridInp is not None): (Geometry.appendGeometries(GridGeo)).echo(echoGridInp)
     
     # - merge geometries

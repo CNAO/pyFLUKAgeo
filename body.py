@@ -55,7 +55,7 @@ class Body(GeoObject):
             exit(1)
         myStrings=[myStr]+echoFloats(myFloats,lFree=lFree)
         myStr=assembleLine(myStrings,maxLen=maxLen,header=header,lMultiLine=lMultiLine)
-        if (self.TransformName is not None):
+        if (self.isLinkedToTransform()):
             myStr="$Start_transform -%s\n%s\n$end_transform"%(self.TransformName,myStr)
         return GeoObject.echoComm(self)+myStr
 
@@ -68,6 +68,9 @@ class Body(GeoObject):
             
     def retTransformName(self):
         return self.TransformName
+
+    def isLinkedToTransform(self):
+        return self.TransformName is not None
 
     @staticmethod
     def fromBuf(tmpLines):

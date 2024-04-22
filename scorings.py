@@ -25,7 +25,7 @@ class Usrbin(GeoObject):
         self.definition=[] # array of strings storing the lines defining the
                            #   USRBIN. NB: USRBIN tags, & char and bin name
                            #   are NOT stored.
-        self.TransfName=""
+        self.TransfName=None
 
     def echo(self):
         '''take into account comment'''
@@ -45,7 +45,7 @@ class Usrbin(GeoObject):
             if (myLine.startswith("*")):
                 newUsrBin.tailMe(myLine)
             elif (myLine.startswith("ROTPRBIN")):
-                newUsrBin.assignTrasf(myLine[20:30].strip())
+                newUsrBin.assignTransformName(myLine[20:30].strip())
                 if (len(newUsrBin.TransfName)==0):
                     print("...something wrong when parsing USRBIN cards: no ROT-DEFI card name!")
                     exit(1)
@@ -208,9 +208,11 @@ class Usrbin(GeoObject):
         self.setExtremes(newMin,newMax,axes=axis)
         self.setNbins(nBins=newNbins,axes=axis)
 
-    def assignTrasf(self,trasfName):
+    def assignTransformName(self,trasfName):
         if (len(trasfName)>0):
             self.TransfName=trasfName
-    def returnTrasf(self):
+    def retTransformName(self):
         return self.TransfName
+    def isLinkedToTransform(self):
+        return self.retTransformName() is not None
     
