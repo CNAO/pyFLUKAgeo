@@ -510,8 +510,35 @@ class Geometry():
             for iT,myT in reversed(list(enumerate(allTrasfNames))):
                 if (myT not in bodTrasfNames):
                     myTras.pop(iT)
-        new.tras=myTras
+        if (len(myTras)>0): new.tras=myTras
         new.title=myGeo.title
+        return new
+
+    @staticmethod
+    def LatticeCopy(myGeo,lTrigScoring=True,RegName=None,LatName=None,LatMat="VACUUM"):
+        '''
+        The full geometry is copied in a single LATTICE region, no support
+            for any OUTER region is provided, for the time being.
+        '''
+        if (RegName is None): RegName="LATREG"
+        if (LatName is None): LatName=RegName
+        new=Geometry()
+        myReg=Region(myName=RegName)
+        myReg.assignLat(myLatName=LatName)
+        myReg.material=LatMat
+        new.add(myReg,what="REG")
+        myTras=deepcopy(myGeo.tras)
+        if (lTrigScoring):
+            new.bins=deepcopy(myGeo.bins)
+        else:
+            # do not copy USRBINs and remove uselss transformations
+            allTrasfNames,iEntry=myGeo.ret("TRANSF","ALL")
+            binTrasfNames,iEntry=myGeo.ret("TRANSFLINKEDTOUSRBIN","ALL")
+            for iT,myT in reversed(list(enumerate(allTrasfNames))):
+                if (myT in binTrasfNames):
+                    myTras.pop(iT)
+        if (len(myTras)>0): new.tras=myTras
+        new.title="LATTICE of %s"%(myGeo.title)
         return new
 
     def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lGeoDirs=False,lLatt=False,lDebug=False):
@@ -575,8 +602,8 @@ class Geometry():
                 ROTDEFIlist.append(RotDefi(myDD=myDD))
             if (len(ROTDEFIlist)>0):
                 # add transformation to actual position...
-                lCreate=lLatt
-                if ( lGeoDirs ):
+                lCreate=False
+                if ( lGeoDirs or lLatt):
                     # ...if $start_tranform directives are used
                     myEntry, iEntry = self.ret("TRANSF",myName)
                     lCreate=myEntry is None
@@ -587,8 +614,10 @@ class Geometry():
                             lCreate=True
                             myBin.assignTransformName(myName)
                 if (lCreate):
-                    print("...adding the final transformation to (existing) list of transformations...")
-                    self.add(Transformation(myID=len(self.tras),myName=myName),what="tras")
+                    myEntry,iEntry=self.ret("TRANSF",myName)
+                    if (myEntry is None):
+                        print("...adding the final transformation to (existing) list of transformations...")
+                        self.add(Transformation(myID=len(self.tras),myName=myName),what="tras")
                 # - add list of ROT-DEFIs for the solid transformation to the list
                 #   of existing transformation
                 for myTras in self.tras:
@@ -997,6 +1026,7 @@ class Geometry():
         - lTrigScoring: this list states if the gridded geometries should have
                         a copy of the scoring cards declared with the prototype;
         '''
+        print("building gridded geometry...")
         if (lTrigScoring is None): lTrigScoring=True
         if (not isinstance(lTrigScoring,list)): lTrigScoring=[ lTrigScoring for ii in range(myGrid) ]
         myGeos=[]
@@ -1012,32 +1042,39 @@ class Geometry():
                 myGeo=Geometry.DeepCopy(myProtoGeos[myProtoList[iLoc]],lTrigScoring=lTrigScoring[iLoc])
                 if (lLattice): protoSeen[myProtoList[iLoc]]=iLoc
             else:
-                myGeo=Geometry()
-                myReg=Region(myName="LATREG"); myReg.assignLat(); myReg.material="VACUUM"
-                myGeo.add(myReg,what="REG")
+                myGeo=Geometry.LatticeCopy(myProtoGeos[myProtoList[iLoc]],lTrigScoring=lTrigScoring[iLoc])
             # - move clone to requested location/orientation
             #   NB: give priority to angles/axis wrt matrices, for higher
             #       numerical accuracy in final .inp file
             if (len(myLoc.ret("ANGLE"))>0):
-                if (not lLattice or iLoc==protoSeen[myProtoList[iLoc]]):
-                    dd=myLoc.ret("POINT")
-                    myTheta=myLoc.ret("ANGLE")
-                    myAxis=myLoc.ret("AXIS")
+                if (lLattice and iLoc!=protoSeen[myProtoList[iLoc]]):
+                    protoLoc=myGrid.ret(what="LOC",iEl=protoSeen[myProtoList[iLoc]])
+                    dd=-protoLoc.ret("POINT")
+                    myGeo.solidTrasform(dd=dd,lGeoDirs=lGeoDirs,lLatt=True,lDebug=lDebug)
+                    myTheta=[ -angle for angle in reversed(protoLoc.ret("ANGLE")) ]
+                    myAxis=[ axis for axis in reversed(protoLoc.ret("AXIS")) ]
+                    myGeo.solidTrasform(myTheta=myTheta,myAxis=myAxis,lGeoDirs=lGeoDirs,lLatt=True,lDebug=lDebug)
+                    tlLatt=True
                 else:
-                    protoLoc=myGrid.ret(what="LOC",iEl=iLoc)
-                    dd=myLoc.ret("POINT")-protoLoc.ret("POINT")
-                    myTheta=[ -angle for angle in reversed(protoLoc.ret("ANGLE")) ]+myLoc.ret("ANGLE")
-                    myAxis=[ axis for axis in reversed(protoLoc.ret("AXIS")) ]+myLoc.ret("AXIS")
-                myGeo.solidTrasform(dd=dd,myTheta=myTheta,myAxis=myAxis,lGeoDirs=lGeoDirs,lLatt=lLattice,lDebug=lDebug)
+                    tlLatt=False
+                dd=myLoc.ret("POINT")
+                myTheta=myLoc.ret("ANGLE")
+                myAxis=myLoc.ret("AXIS")
+                myGeo.solidTrasform(dd=dd,myTheta=myTheta,myAxis=myAxis,\
+                                    lGeoDirs=lGeoDirs,lLatt=tlLatt,lDebug=lDebug)
             else:
-                if (not lLattice or iLoc==protoSeen[myProtoList[iLoc]]):
-                    dd=myLoc.ret("POINT")
-                    myMat=myLoc.ret("MATRIX")
-                else:
+                if (lLattice and iLoc!=protoSeen[myProtoList[iLoc]]):
                     protoLoc=myGrid.ret(what="LOC",iEl=iLoc)
-                    dd=myLoc.ret("POINT")-protoLoc.ret("POINT")
-                    myMat=myLoc.ret("MATRIX").mulMat(protoLoc.ret("MATRIX").inv())
-                myGeo.solidTrasform(dd=dd,myMat=myMat,lGeoDirs=lGeoDirs,lLatt=lLattice,lDebug=lDebug)
+                    dd=-protoLoc.ret("POINT")
+                    myGeo.solidTrasform(dd=dd,lGeoDirs=lGeoDirs,lLatt=True,lDebug=lDebug)
+                    myMat=protoLoc.ret("MATRIX").inv()
+                    myGeo.solidTrasform(myMat=myMat,lGeoDirs=lGeoDirs,lLatt=tlLatt,lDebug=lDebug)
+                    tlLatt=True
+                else:
+                    tlLatt=False
+                dd=myLoc.ret("POINT")
+                myMat=myLoc.ret("MATRIX")
+                myGeo.solidTrasform(dd=dd,myMat=myMat,lGeoDirs=lGeoDirs,lLatt=tlLatt,lDebug=lDebug)
             # - flag the region(s) outside the prototypes or that should be sized
             #   by the hive cells
             if (not lLattice or iLoc==protoSeen[myProtoList[iLoc]]):
@@ -1054,6 +1091,7 @@ class Geometry():
             # - append clone to list of geometries
             myGeos.append(myGeo)
         # return merged geometry
+        print("...built %d grid elements!"%(len(myGeos)))
         return myGeos
 
     @staticmethod
@@ -1084,10 +1122,7 @@ class Geometry():
             #   grid regions, and then remove the hive region
             # - merge defs
             for iRhg,jRhg,iRgg,jRgg in zip(mapping["iRhg"],mapping["jRhg"],mapping["iRgg"],mapping["jRgg"]):
-                if (gridGeo[jRgg].regs[iRgg].isLattice()):
-                    gridGeo[jRgg].regs[iRgg].definition=hiveGeo[jRhg].regs[iRhg].definition
-                else:
-                    gridGeo[jRgg].regs[iRgg].merge(hiveGeo[jRhg].regs[iRhg])
+                gridGeo[jRgg].regs[iRgg].merge(hiveGeo[jRhg].regs[iRhg])
                 if (hiveGeo[jRhg].regs[iRhg].echoName() not in removeRegs):
                     removeRegs.append(hiveGeo[jRhg].regs[iRhg].echoName())
                     jRemoveRegs.append(jRhg)
@@ -1340,7 +1375,7 @@ if (__name__=="__main__"):
     cellGrid=grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
     #   . associate a prototype to each cell
     myProtoList=[ "caloCrys_02.inp" for ii in range(len(cellGrid)) ]
-    lTrigScoring=[ (1<=ii and ii<=2) for ii in range(len(cellGrid)) ]
+    lTrigScoring=[ (0<=ii and ii<=2) for ii in range(len(cellGrid)) ]
     #   . generate geometry
     GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=osRegNames,lLattice=lLattice,lTrigScoring=lTrigScoring,lGeoDirs=lGeoDirs,lDebug=lDebug)
     if (echoGridInp is not None): (Geometry.appendGeometries(GridGeo)).echo(echoGridInp)
