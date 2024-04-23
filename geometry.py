@@ -828,7 +828,7 @@ class Geometry():
         if (lDebug): print("...done;")
 
     @staticmethod
-    def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,defMat="VACUUM",tmpTitle="Hive for a spherical shell",lWrapBHaround=False,lDebug=True):
+    def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,defMat="VACUUM",tmpTitle="Hive for a spherical shell",lWrapBHaround=False,whichMaxLen=None,lDebug=True):
         '''
         This method defines the hive for a grid on a spherical shell.
 
@@ -850,6 +850,15 @@ class Geometry():
         '''
         
         print("Preparing the hive for a spherical shell...")
+
+        if (whichMaxLen is None):
+            whichMaxLen="M"
+        elif (not isinstance(whichMaxLen,str) or len(whichMaxLen.strip())==0):
+            print("Please specify whichMaxLen as a non-empty string!")
+            exit(1)
+        elif (whichMaxLen.upper()[0] not in ["R","P","T","M"]):
+            print("Please specify a suitable whichMaxLen: R(adius)/P(hi)/T(heta)/M(ax)!")
+            exit(1)
         
         print("...generating the grid of cells...")
         cellGrid=grid.SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
@@ -957,7 +966,14 @@ class Geometry():
                 tmpReg.material=defMat
                 tmpReg.addZone('+%-8s -%-8s +%-8s'%(spheres[iR].echoName(),spheres[iR-1].echoName(),thetas[0].echoName()))
                 myCenter=cellGrid.ret(what="POINT",iEl=iHive)
-                rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(TTs[0]-90)))
+                if (whichMaxLen.upper().startswith("R")):
+                    rMaxLen=RRs[iR]-RRs[iR-1]
+                elif (whichMaxLen.upper().startswith("P")):
+                    rMaxLen=2*np.pi*RRs[iR]*np.sin(np.radians(TTs[0]-90))
+                elif (whichMaxLen.upper().startswith("T")):
+                    rMaxLen=RRs[iR]*2*np.absolute(np.radians(TTs[0]-90))
+                else:
+                    rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(TTs[0]-90)),2*np.pi*RRs[iR]*np.sin(np.radians(TTs[0]-90)))
                 tmpReg.tailMe("* - hive region %4d: SOUTH POLE! R[cm]=[%g:%g], theta[deg]=[-90:%g]"%(
                     iHive,RRs[iR-1],RRs[iR],TTs[0]))
                 tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
@@ -979,7 +995,14 @@ class Geometry():
                     pDef='+%-8s -%-8s'%(phis[iP].echoName(),phis[iP-1].echoName())
                     tmpReg.addZone('%s %s %s'%(rDef,tDef,pDef))
                     myCenter=cellGrid.ret(what="POINT",iEl=iHive)
-                    rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*np.radians(TTs[iT]-TTs[iT-1]),RRs[iR]*np.radians(PPs[iT]-PPs[iT-1]))
+                    if (whichMaxLen.upper().startswith("R")):
+                        rMaxLen=RRs[iR]-RRs[iR-1]
+                    elif (whichMaxLen.upper().startswith("P")):
+                        rMaxLen=RRs[iR]*np.radians(PPs[iT]-PPs[iT-1])
+                    elif (whichMaxLen.upper().startswith("T")):
+                        rMaxLen=RRs[iR]*np.radians(TTs[iT]-TTs[iT-1])
+                    else:
+                        rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*np.radians(TTs[iT]-TTs[iT-1]),RRs[iR]*np.radians(PPs[iT]-PPs[iT-1]))
                     tmpReg.tailMe("* - hive region %4d: R[cm]=[%g:%g], theta[deg]=[%g:%g], phi[deg]=[%g:%g]"%(
                         iHive,RRs[iR-1],RRs[iR],TTs[iT-1],TTs[iT],PPs[iP-1],PPs[iP]))
                     tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
@@ -992,7 +1015,14 @@ class Geometry():
                 tmpReg.material=defMat
                 tmpReg.addZone('+%-8s -%-8s +%-8s'%(spheres[iR].echoName(),spheres[iR-1].echoName(),thetas[-1].echoName()))
                 myCenter=cellGrid.ret(what="POINT",iEl=iHive)
-                rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(90-TTs[-1])))
+                if (whichMaxLen.upper().startswith("R")):
+                    rMaxLen=RRs[iR]-RRs[iR-1]
+                elif (whichMaxLen.upper().startswith("P")):
+                    rMaxLen=2*np.pi*RRs[iR]*np.sin(np.radians(90-TTs[-1]))
+                elif (whichMaxLen.upper().startswith("T")):
+                    rMaxLen=RRs[iR]*2*np.absolute(np.radians(90-TTs[-1]))
+                else:
+                    rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(90-TTs[-1])),2*np.pi*RRs[iR]*np.sin(np.radians(90-TTs[-1])))
                 tmpReg.tailMe("* - hive region %4d: NORTH POLE! R[cm]=[%g:%g], theta[deg]=[%g:90]"%(
                     iHive,RRs[iR-1],RRs[iR],TTs[-1]))
                 tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
@@ -1363,7 +1393,7 @@ if (__name__=="__main__"):
     NP=5       # number of steps (i.e. grid cells)
     
     # - hive geometry
-    HiveGeo=Geometry.DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
+    HiveGeo=Geometry.DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,whichMaxLen=None,lDebug=lDebug)
     if (echoHiveInp is not None): HiveGeo.echo(echoHiveInp)
     
     # - gridded geometry
