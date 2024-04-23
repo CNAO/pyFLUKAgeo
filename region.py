@@ -165,21 +165,28 @@ class Region(GeoObject):
         mergedDef=""
         newRegZones=newReg.definition.split("|")
         myRegZones=self.definition.split("|")
-        lFirst=True
-        for ii,myRegZone in enumerate(myRegZones,1):
-            sMyRegZone=myRegZone.strip()
-            if (len(sMyRegZone)>0):
-                for jj,newRegZone in enumerate(newRegZones,1):
-                    sNewRegZone=newRegZone.strip()
-                    if (len(sNewRegZone)>0):
-                        tmpComment="* merging zone %s:%d into %s:%d"%(\
-                                newReg.echoName(),jj,self.echoName(),ii)
-                        if (lFirst):
-                            self.tailMe(tmpComment)
-                            mergedDef="| %s %s"%(sMyRegZone,sNewRegZone)
-                            lFirst=False
-                        else:
-                            mergedDef=mergedDef+"\n%s"%(tmpComment)+"\n%s| %s %s"%(spacing,sMyRegZone,sNewRegZone)
+        if (len(myRegZones)==1 and len(myRegZones[0])==0):
+            # empty definition of self
+            mergedDef="%s"%(newReg.definition)
+            tmpComment="* copying definition of %s into %s"%(\
+                        newReg.echoName(),self.echoName())
+            self.tailMe(tmpComment)
+        else:
+            lFirst=True
+            for ii,myRegZone in enumerate(myRegZones,1):
+                sMyRegZone=myRegZone.strip()
+                if (len(sMyRegZone)>0):
+                    for jj,newRegZone in enumerate(newRegZones,1):
+                        sNewRegZone=newRegZone.strip()
+                        if (len(sNewRegZone)>0):
+                            tmpComment="* merging zone %s:%d into %s:%d"%(\
+                                    newReg.echoName(),jj,self.echoName(),ii)
+                            if (lFirst):
+                                self.tailMe(tmpComment)
+                                mergedDef="| %s %s"%(sMyRegZone,sNewRegZone)
+                                lFirst=False
+                            else:
+                                mergedDef=mergedDef+"\n%s"%(tmpComment)+"\n%s| %s %s"%(spacing,sMyRegZone,sNewRegZone)
         self.definition=mergedDef
         # merge neighbours
         self.neigh=self.neigh+newReg.neigh
