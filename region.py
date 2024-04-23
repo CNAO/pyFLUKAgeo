@@ -165,13 +165,7 @@ class Region(GeoObject):
         mergedDef=""
         newRegZones=newReg.definition.split("|")
         myRegZones=self.definition.split("|")
-        if (len(myRegZones)==1 and len(myRegZones[0])==0):
-            # empty definition of self
-            mergedDef="%s"%(newReg.definition)
-            tmpComment="* copying definition of %s into %s"%(\
-                        newReg.echoName(),self.echoName())
-            self.tailMe(tmpComment)
-        else:
+        if (self.isNonEmpty()):
             lFirst=True
             for ii,myRegZone in enumerate(myRegZones,1):
                 sMyRegZone=myRegZone.strip()
@@ -187,6 +181,12 @@ class Region(GeoObject):
                                 lFirst=False
                             else:
                                 mergedDef=mergedDef+"\n%s"%(tmpComment)+"\n%s| %s %s"%(spacing,sMyRegZone,sNewRegZone)
+        else:
+            # empty definition of self
+            mergedDef="%s"%(newReg.definition)
+            tmpComment="* copying definition of %s into %s"%(\
+                        newReg.echoName(),self.echoName())
+            self.tailMe(tmpComment)
         self.definition=mergedDef
         # merge neighbours
         self.neigh=self.neigh+newReg.neigh
