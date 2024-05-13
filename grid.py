@@ -19,7 +19,7 @@ class Location:
     Rotation axes are labelled as: x=1, y=2, z=3;
     '''
     def __init__(self,myP=[0.,0.,0.],myW=myMath.UnitMat,myAngs=[0.,0.,0.],myAxes=[1,2,3],myLab=""):
-        self.P=myP
+        self.P=np.array(myP)
         self.W=myW
         self.angs=myAngs # [degs]
         self.axes=myAxes
@@ -130,7 +130,10 @@ class Grid:
         return buf
 
     def ret(self,what="point",iEl=-1):
-        return self.locs[iEl].ret(what=what)
+        if (what.upper()=="LOC"):
+            return self.locs[iEl]
+        else:            
+            return self.locs[iEl].ret(what=what)
 
 class SphericalShell(Grid):
 

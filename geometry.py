@@ -14,7 +14,7 @@ from scorings import Usrbin
 class Geometry():
     '''
     - name-based FLUKA geometry defition;
-    - NO support of LATTICE cards;
+    - no support for LATTICE cards at parsing;
     - NO support for #include cards or geo defitions in files other than that
        being parsed;
     - comments:
@@ -118,6 +118,16 @@ class Geometry():
                     if (myEntry.echoName()==myValue):
                         lFound=True
                         break
+        elif (myKey.upper().startswith("LAT")):
+            if (myValue.upper()=="ALL"):
+                myEntry=[ reg.echoLatticeName() for reg in self.regs if reg.isLattice() ]
+                iEntry=[ ii for ii in range(len(self.regs)) if self.regs[ii].isLattice() ]
+                lFound=True
+            else:
+                for iEntry,myEntry in enumerate(self.regs):
+                    if (myEntry.echoLatticeName()==myValue):
+                        lFound=True
+                        break
         elif (myKey.upper().startswith("REG")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ reg.echoName() for reg in self.regs ]
@@ -128,6 +138,40 @@ class Geometry():
                     if (myEntry.echoName()==myValue):
                         lFound=True
                         break
+        elif (myKey.upper().startswith("TRANSFLINKEDTOBODY")):
+            if (myValue.upper()=="ALL"):
+                myEntry=list(set([ body.retTransformName() for body in self.bods if body.isLinkedToTransform() ]))
+                iEntry=[]
+                for tEntry in myEntry:
+                    mE,iE=self.ret("transf",tEntry)
+                    iEntry.append(iE)
+                lFound=True
+            else:
+                mE,iE=self.ret("body",myValue)
+                if (mE is not None):
+                    if (mE.isLinkedToTransform()):
+                        myEntry,iEntry=self.ret("transf",mE.retTransformName())
+                        lFound=myEntry is None
+                else:
+                    print("cannot find body named %s!"%(myValue))
+                    exit(1)
+        elif (myKey.upper().startswith("TRANSFLINKEDTOUSRBIN")):
+            if (myValue.upper()=="ALL"):
+                myEntry=list(set([ mbin.retTransformName() for mbin in self.bins if mbin.isLinkedToTransform() ]))
+                iEntry=[]
+                for tEntry in myEntry:
+                    mE,iE=self.ret("transf",tEntry)
+                    iEntry.append(iE)
+                lFound=True
+            else:
+                mE,iE=self.ret("usrbin",myValue)
+                if (mE is not None):
+                    if (mE.isLinkedToTransform()):
+                        myEntry,iEntry=self.ret("transf",mE.retTransformName())
+                        lFound=myEntry is None
+                else:
+                    print("cannot find USRBIN named %s!"%(myValue))
+                    exit(1)
         elif (myKey.upper().startswith("TRANSF")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ tras.echoName() for tras in self.tras ]
@@ -340,6 +384,18 @@ class Geometry():
             ff.write("* \n")
             ff.close()
             print("...done;")
+        elif (what.upper().startswith("LAT")):
+            LatNames=self.ret("LAT","ALL")
+            if (len(LatNames)>0):
+                print("saving LATTICE cards in file %s..."%(oFileName))
+                ff=open(oFileName,dMode)
+                ff.write("* \n")
+                for tmpReg in self.regs:
+                    if (tmpReg.isLattice()):
+                        ff.write("%s\n"%(tmpReg.echo(lLat=True)))
+                ff.write("* \n")
+                ff.close()
+                print("...done;")
         elif (what.upper().startswith("TRANSF")):
             print("saving ROT-DEFI cards in file %s..."%(oFileName))
             ff=open(oFileName,dMode)
@@ -379,6 +435,8 @@ class Geometry():
                               lSplit=False,what="bodies",dMode="w")
                     self.echo(oFileName.replace(".inp","_regions.inp",1),\
                               lSplit=False,what="regions",dMode="w")
+                    self.echo(oFileName.replace(".inp","_lattices.inp",1),\
+                              lSplit=False,what="lattices",dMode="w")
                     self.echo(oFileName.replace(".inp","_assignmats.inp",1),\
                               lSplit=False,what="materials",dMode="w")
                     if (len(self.tras)>0):
@@ -403,6 +461,7 @@ class Geometry():
                     ff=open(oFileName,"a")
                     ff.write("%-10s\n"%("END"))
                     ff.close()
+                    self.echo(oFileName,lSplit=False,what="lattices",dMode="a")
                     self.echo(oFileName.replace(".geo","_assignmats.inp",1),\
                               lSplit=False,what="materials",dMode="w")
                     if (len(self.tras)>0):
@@ -423,6 +482,9 @@ class Geometry():
                 self.echo(oFileName,lSplit=False,what="regions",dMode="a")
                 ff=open(oFileName,"a")
                 ff.write("%-10s\n"%("END"))
+                ff.close()
+                self.echo(oFileName,lSplit=False,what="lattices",dMode="a")
+                ff=open(oFileName,"a")
                 ff.write("%-10s\n"%("GEOEND"))
                 ff.close()
                 if (len(self.tras)>0):
@@ -433,7 +495,53 @@ class Geometry():
         else:
             print("...what should I echo? %s NOT reconised!"%(what))
 
-    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lGeoDirs=False,lDebug=False):
+    @staticmethod
+    def DeepCopy(myGeo,lTrigScoring=True):
+        new=Geometry()
+        new.bods=deepcopy(myGeo.bods)
+        new.regs=deepcopy(myGeo.regs)
+        myTras=deepcopy(myGeo.tras)
+        if (lTrigScoring):
+            new.bins=deepcopy(myGeo.bins)
+        else:
+            # do not copy USRBINs and remove uselss transformations
+            allTrasfNames,iEntry=myGeo.ret("TRANSF","ALL")
+            bodTrasfNames,iEntry=myGeo.ret("TRANSFLINKEDTOBODY","ALL")
+            for iT,myT in reversed(list(enumerate(allTrasfNames))):
+                if (myT not in bodTrasfNames):
+                    myTras.pop(iT)
+        if (len(myTras)>0): new.tras=myTras
+        new.title=myGeo.title
+        return new
+
+    @staticmethod
+    def LatticeCopy(myGeo,lTrigScoring=True,RegName=None,LatName=None,LatMat="VACUUM"):
+        '''
+        The full geometry is copied in a single LATTICE region, no support
+            for any OUTER region is provided, for the time being.
+        '''
+        if (RegName is None): RegName="LATREG"
+        if (LatName is None): LatName=RegName
+        new=Geometry()
+        myReg=Region(myName=RegName)
+        myReg.assignLat(myLatName=LatName)
+        myReg.material=LatMat
+        new.add(myReg,what="REG")
+        myTras=deepcopy(myGeo.tras)
+        if (lTrigScoring):
+            new.bins=deepcopy(myGeo.bins)
+        else:
+            # do not copy USRBINs and remove uselss transformations
+            allTrasfNames,iEntry=myGeo.ret("TRANSF","ALL")
+            binTrasfNames,iEntry=myGeo.ret("TRANSFLINKEDTOUSRBIN","ALL")
+            for iT,myT in reversed(list(enumerate(allTrasfNames))):
+                if (myT in binTrasfNames):
+                    myTras.pop(iT)
+        if (len(myTras)>0): new.tras=myTras
+        new.title="LATTICE of %s"%(myGeo.title)
+        return new
+
+    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lGeoDirs=False,lLatt=False,lDebug=False):
         '''
         Bodies are applied the transformation as requested by the user:
         * first, rotation (meant to be expressed in ref sys of the object to rotate);
@@ -447,6 +555,9 @@ class Geometry():
           in a right-handed system.
         '''
         print("applying solid transformation(s)...")
+        # the use of LATTICE cards and geometry directives are mutually exclusive,
+        #    with LATTICE cards ruling:
+        if (lLatt and lGeoDirs): lGeoDirs=False
         if (myMat is None and myTheta is None and dd is None):
             print("...no transformation provided!")
         else:
@@ -454,9 +565,9 @@ class Geometry():
             myName="ToFinPos"
             if (myMat is not None):
                 print("...applying transformation expressed by matrix to geometry...")
-                if (not lGeoDirs):
-                    for ii in range(len(self.bods)):
-                        self.bods[ii].rotate(myMat=myMat,myTheta=None,myAxis=None,\
+                if (not lGeoDirs and not lLatt):
+                    for myBod in self.bods:
+                        myBod.rotate(myMat=myMat,myTheta=None,myAxis=None,\
                                              lDegs=lDegs,lDebug=lDebug)
                 thetas=myMat.GetGimbalAngles() # [degs]
                 for myAx,myTh in enumerate(thetas,1):
@@ -470,21 +581,21 @@ class Geometry():
                         exit(1)
                     for myT,myAx in zip(myTheta,myAxis):
                         # iteratively call this same method, on a single angle
-                        self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lGeoDirs=lGeoDirs,lDebug=lDebug)
+                        self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lGeoDirs=lGeoDirs,lLatt=lLatt,lDebug=lDebug)
                 elif (myTheta!=0.0):
                     print("...applying rotation by %f degs around axis %d..."%\
                           (myTheta,myAxis))
-                    if (not lGeoDirs):
-                        for ii in range(len(self.bods)):
-                            self.bods[ii].rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,\
+                    if (not lGeoDirs and not lLatt):
+                        for myBod in self.bods:
+                            myBod.rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,\
                                                  lDegs=lDegs,lDebug=lDebug)
                     ROTDEFIlist.append(RotDefi(myAx=myAxis,myTh=myTheta))
             if (dd is not None):
                 print("...applying traslation array [%f,%f,%f] cm..."%\
                       (dd[0],dd[1],dd[2]))
                 if (not lGeoDirs):
-                    for ii in range(len(self.bods)):
-                        self.bods[ii].traslate(dd=dd)
+                    for myBod in self.bods:
+                        myBod.traslate(dd=dd)
                 myDD=-dd
                 if (isinstance(myDD,list)):
                     myDD=np.array(DD)
@@ -492,27 +603,33 @@ class Geometry():
             if (len(ROTDEFIlist)>0):
                 # add transformation to actual position...
                 lCreate=False
-                if ( lGeoDirs and not lCreate ):
+                if ( lGeoDirs or lLatt):
                     # ...if $start_tranform directives are used
                     myEntry, iEntry = self.ret("TRANSF",myName)
                     lCreate=myEntry is None
                 if ( not lCreate ):
                     # ...if USRBINs are present without ROTPRBIN cards
                     for myBin in self.bins:
-                        if ( myBin.returnTrasf()=="" ):
+                        if ( not myBin.isLinkedToTransform() ):
                             lCreate=True
-                            myBin.assignTrasf(myName)
+                            myBin.assignTransformName(myName)
                 if (lCreate):
-                    print("...adding the final transformation to (existing) list of transformations...")
-                    self.add(Transformation(myID=len(self.tras),myName=myName),what="tras")
+                    myEntry,iEntry=self.ret("TRANSF",myName)
+                    if (myEntry is None):
+                        print("...adding the final transformation to (existing) list of transformations...")
+                        self.add(Transformation(myID=len(self.tras),myName=myName),what="tras")
                 # - add list of ROT-DEFIs for the solid transformation to the list
                 #   of existing transformation
                 for myTras in self.tras:
-                    myTras.AddRotDefis(reversed(ROTDEFIlist),iAdd=0)
+                    myTras.AddRotDefis(reversed(deepcopy(ROTDEFIlist)),iAdd=0)
                 # - link solid trasformation
                 if (lGeoDirs):
-                    for ii in range(len(self.bods)):
-                        self.bods[ii].linkTransformName(Tname=myName)
+                    for myBod in self.bods:
+                        myBod.linkTransformName(Tname=myName)
+                if (lLatt):
+                    for myReg in self.regs:
+                        myReg.assignTrasf(myTrasfName=myName)
+                    
         print("...done.")
 
     def rename(self,newName,lNotify=True):
@@ -524,25 +641,27 @@ class Geometry():
         newNameFmt=newName+"%0"+"%d"%(maxLenName-len(newName))+"d"
         oldBodyNames=[]; newBodyNames=[]
         oldTrasNames=[]; newTrasNames=[]
-        for iBody in range(len(self.bods)):
-            oldBodyNames.append(self.bods[iBody].echoName())
+        for iBody,myBod in enumerate(self.bods):
+            oldBodyNames.append(myBod.echoName())
             newBodyNames.append(newNameFmt%(iBody+1))
-            self.bods[iBody].rename(newBodyNames[-1],lNotify=lNotify)
-        for iReg in range(len(self.regs)):
-            self.regs[iReg].rename(newNameFmt%(iReg+1),lNotify=lNotify)
-            self.regs[iReg].BodyNameReplaceInDef(oldBodyNames,newBodyNames)
-        for iTras in range(len(self.tras)):
-            oldTrasNames.append(self.tras[iTras].echoName())
+            myBod.rename(newBodyNames[-1],lNotify=lNotify)
+        for iReg,myReg in enumerate(self.regs):
+            myReg.rename(newNameFmt%(iReg+1),lNotify=lNotify)
+            if (myReg.isLattice()):
+                myReg.assignLat(myLatName=newNameFmt%(iReg+1))
+            myReg.BodyNameReplaceInDef(oldBodyNames,newBodyNames)
+        for iTras,myTras in enumerate(self.tras):
+            oldTrasNames.append(myTras.echoName())
             newTrasNames.append(newNameFmt%(iTras+1))
-            self.tras[iTras].rename(newTrasNames[-1],lNotify=lNotify)
-        for iBin in range(len(self.bins)):
-            self.bins[iBin].rename(newNameFmt%(iBin+1),lNotify=lNotify)
-            trName=self.bins[iBin].returnTrasf()
-            if (len(trName)>0):
+            myTras.rename(newTrasNames[-1],lNotify=lNotify)
+        for iBin,myBin in enumerate(self.bins):
+            myBin.rename(newNameFmt%(iBin+1),lNotify=lNotify)
+            if (myBin.isLinkedToTransform()):
+                trName=myBin.retTransformName()
                 lFound=False
                 for oldTrasName,newTrasName in zip(oldTrasNames,newTrasNames):
                     if (trName==oldTrasName):
-                        self.bins[iBin].assignTrasf(newTrasName)
+                        myBin.assignTransformName(newTrasName)
                         lFound=True
                         break
                 if (not lFound):
@@ -551,13 +670,22 @@ class Geometry():
             else:
                 print("Geometry.rename(): USRBIN with no original name in geometry!")
                 exit(1)
-        for iBody in range(len(self.bods)):
-            if (self.bods[iBody].retTransformName() is not None):
-                if (self.bods[iBody].retTransformName() not in oldTrasNames):
-                    print("cannot find name of transformation for moving geo: %s!"%(self.bods[iBody].retTransformName()))
+        for myBod in self.bods:
+            if (myBod.isLinkedToTransform()):
+                if (myBod.retTransformName() not in oldTrasNames):
+                    print("cannot find name of transformation for moving body:")
+                    print(myBod.echo())
                     exit(1)
-                ii=oldTrasNames.index(self.bods[iBody].retTransformName())
-                self.bods[iBody].linkTransformName(Tname=newTrasNames[ii])
+                ii=oldTrasNames.index(myBod.retTransformName())
+                myBod.linkTransformName(Tname=newTrasNames[ii])
+        for myReg in self.regs:
+            if (myReg.isLattice()):
+                if (myReg.echoTransformName() not in oldTrasNames):
+                    print("cannot find name of transformation for moving LATTICE region:")
+                    print(myReg.echo())
+                    exit(1)
+                ii=oldTrasNames.index(myReg.echoTransformName())
+                myReg.assignTrasf(myTrasfName=newTrasNames[ii])
         print("...done.")
 
     def flagRegs(self,whichRegs,rCont,rCent):
@@ -692,14 +820,15 @@ class Geometry():
             print("Wrong indication of USRBINs for resizing!")
             print(whichUnits)
             exit(1)
-        for bin2mod in bins2mod:
-            whichBin,iBin=self.ret("bin",bin2mod)
-            whichBin.resize(newL,axis=3)
-            if (lDebug): print(whichBin.echo())
+        if (bins2mod is not None):
+            for bin2mod in bins2mod:
+                whichBin,iBin=self.ret("bin",bin2mod)
+                whichBin.resize(newL,axis=3)
+                if (lDebug): print(whichBin.echo())
         if (lDebug): print("...done;")
 
     @staticmethod
-    def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,defMat="VACUUM",tmpTitle="Hive for a spherical shell",lWrapBHaround=False,lDebug=True):
+    def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,defMat="VACUUM",tmpTitle="Hive for a spherical shell",lWrapBHaround=False,whichMaxLen=None,lDebug=True):
         '''
         This method defines the hive for a grid on a spherical shell.
 
@@ -721,6 +850,15 @@ class Geometry():
         '''
         
         print("Preparing the hive for a spherical shell...")
+
+        if (whichMaxLen is None):
+            whichMaxLen="M"
+        elif (not isinstance(whichMaxLen,str) or len(whichMaxLen.strip())==0):
+            print("Please specify whichMaxLen as a non-empty string!")
+            exit(1)
+        elif (whichMaxLen.upper()[0] not in ["R","P","T","M"]):
+            print("Please specify a suitable whichMaxLen: R(adius)/P(hi)/T(heta)/M(ax)!")
+            exit(1)
         
         print("...generating the grid of cells...")
         cellGrid=grid.SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
@@ -828,7 +966,14 @@ class Geometry():
                 tmpReg.material=defMat
                 tmpReg.addZone('+%-8s -%-8s +%-8s'%(spheres[iR].echoName(),spheres[iR-1].echoName(),thetas[0].echoName()))
                 myCenter=cellGrid.ret(what="POINT",iEl=iHive)
-                rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(TTs[0]-90)))
+                if (whichMaxLen.upper().startswith("R")):
+                    rMaxLen=RRs[iR]-RRs[iR-1]
+                elif (whichMaxLen.upper().startswith("P")):
+                    rMaxLen=2*np.pi*RRs[iR]*np.sin(np.radians(TTs[0]-90))
+                elif (whichMaxLen.upper().startswith("T")):
+                    rMaxLen=RRs[iR]*2*np.absolute(np.radians(TTs[0]-90))
+                else:
+                    rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(TTs[0]-90)),2*np.pi*RRs[iR]*np.sin(np.radians(TTs[0]-90)))
                 tmpReg.tailMe("* - hive region %4d: SOUTH POLE! R[cm]=[%g:%g], theta[deg]=[-90:%g]"%(
                     iHive,RRs[iR-1],RRs[iR],TTs[0]))
                 tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
@@ -850,7 +995,14 @@ class Geometry():
                     pDef='+%-8s -%-8s'%(phis[iP].echoName(),phis[iP-1].echoName())
                     tmpReg.addZone('%s %s %s'%(rDef,tDef,pDef))
                     myCenter=cellGrid.ret(what="POINT",iEl=iHive)
-                    rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*np.radians(TTs[iT]-TTs[iT-1]),RRs[iR]*np.radians(PPs[iT]-PPs[iT-1]))
+                    if (whichMaxLen.upper().startswith("R")):
+                        rMaxLen=RRs[iR]-RRs[iR-1]
+                    elif (whichMaxLen.upper().startswith("P")):
+                        rMaxLen=RRs[iR]*np.radians(PPs[iT]-PPs[iT-1])
+                    elif (whichMaxLen.upper().startswith("T")):
+                        rMaxLen=RRs[iR]*np.radians(TTs[iT]-TTs[iT-1])
+                    else:
+                        rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*np.radians(TTs[iT]-TTs[iT-1]),RRs[iR]*np.radians(PPs[iT]-PPs[iT-1]))
                     tmpReg.tailMe("* - hive region %4d: R[cm]=[%g:%g], theta[deg]=[%g:%g], phi[deg]=[%g:%g]"%(
                         iHive,RRs[iR-1],RRs[iR],TTs[iT-1],TTs[iT],PPs[iP-1],PPs[iP]))
                     tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
@@ -863,7 +1015,14 @@ class Geometry():
                 tmpReg.material=defMat
                 tmpReg.addZone('+%-8s -%-8s +%-8s'%(spheres[iR].echoName(),spheres[iR-1].echoName(),thetas[-1].echoName()))
                 myCenter=cellGrid.ret(what="POINT",iEl=iHive)
-                rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(90-TTs[-1])))
+                if (whichMaxLen.upper().startswith("R")):
+                    rMaxLen=RRs[iR]-RRs[iR-1]
+                elif (whichMaxLen.upper().startswith("P")):
+                    rMaxLen=2*np.pi*RRs[iR]*np.sin(np.radians(90-TTs[-1]))
+                elif (whichMaxLen.upper().startswith("T")):
+                    rMaxLen=RRs[iR]*2*np.absolute(np.radians(90-TTs[-1]))
+                else:
+                    rMaxLen=max(RRs[iR]-RRs[iR-1],RRs[iR]*2*np.absolute(np.radians(90-TTs[-1])),2*np.pi*RRs[iR]*np.sin(np.radians(90-TTs[-1])))
                 tmpReg.tailMe("* - hive region %4d: NORTH POLE! R[cm]=[%g:%g], theta[deg]=[%g:90]"%(
                     iHive,RRs[iR-1],RRs[iR],TTs[-1]))
                 tmpReg.tailMe("*   center=[%g,%g,%g];"%(myCenter[0],myCenter[1],myCenter[2]))
@@ -879,7 +1038,7 @@ class Geometry():
         return newGeom
 
     @staticmethod
-    def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,osRegNames=[],lGeoDirs=False,lDebug=True):
+    def BuildGriddedGeo(myGrid,myProtoList,myProtoGeos,osRegNames=[],lLattice=False,lTrigScoring=None,lGeoDirs=False,lDebug=True):
         '''
         This method defines a list of FLUKA geometry representing a grid of objects.
 
@@ -894,8 +1053,14 @@ class Geometry():
                        part of the prototypes, to be 'subtracted' from the region
                        definition of the hive cells, that should be sized by the
                        regions of the hive cell;
+        - lTrigScoring: this list states if the gridded geometries should have
+                        a copy of the scoring cards declared with the prototype;
         '''
+        print("building gridded geometry...")
+        if (lTrigScoring is None): lTrigScoring=True
+        if (not isinstance(lTrigScoring,list)): lTrigScoring=[ lTrigScoring for ii in range(myGrid) ]
         myGeos=[]
+        if (lLattice): protoSeen={ key: -1 for key in list(myProtoGeos) }
         # loop over locations, to clone prototypes
         for iLoc,myLoc in enumerate(myGrid):
             if (myProtoList[iLoc] not in myProtoGeos):
@@ -903,17 +1068,49 @@ class Geometry():
                         myProtoList[iLoc]))
                 exit(1)
             # - clone prototype
-            myGeo=deepcopy(myProtoGeos[myProtoList[iLoc]])
+            if ( not lLattice or protoSeen[myProtoList[iLoc]]==-1 ):
+                myGeo=Geometry.DeepCopy(myProtoGeos[myProtoList[iLoc]],lTrigScoring=lTrigScoring[iLoc])
+                if (lLattice): protoSeen[myProtoList[iLoc]]=iLoc
+            else:
+                myGeo=Geometry.LatticeCopy(myProtoGeos[myProtoList[iLoc]],lTrigScoring=lTrigScoring[iLoc])
             # - move clone to requested location/orientation
             #   NB: give priority to angles/axis wrt matrices, for higher
             #       numerical accuracy in final .inp file
             if (len(myLoc.ret("ANGLE"))>0):
-                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myTheta=myLoc.ret("ANGLE"),myAxis=myLoc.ret("AXIS"),lGeoDirs=lGeoDirs,lDebug=lDebug)
+                if (lLattice and iLoc!=protoSeen[myProtoList[iLoc]]):
+                    protoLoc=myGrid.ret(what="LOC",iEl=protoSeen[myProtoList[iLoc]])
+                    dd=-protoLoc.ret("POINT")
+                    myGeo.solidTrasform(dd=dd,lGeoDirs=lGeoDirs,lLatt=True,lDebug=lDebug)
+                    myTheta=[ -angle for angle in reversed(protoLoc.ret("ANGLE")) ]
+                    myAxis=[ axis for axis in reversed(protoLoc.ret("AXIS")) ]
+                    myGeo.solidTrasform(myTheta=myTheta,myAxis=myAxis,lGeoDirs=lGeoDirs,lLatt=True,lDebug=lDebug)
+                    tlLatt=True
+                else:
+                    tlLatt=False
+                dd=myLoc.ret("POINT")
+                myTheta=myLoc.ret("ANGLE")
+                myAxis=myLoc.ret("AXIS")
+                myGeo.solidTrasform(dd=dd,myTheta=myTheta,myAxis=myAxis,\
+                                    lGeoDirs=lGeoDirs,lLatt=tlLatt,lDebug=lDebug)
             else:
-                myGeo.solidTrasform(dd=myLoc.ret("POINT"),myMat=myLoc.ret("MATRIX"),lGeoDirs=lGeoDirs,lDebug=lDebug)
+                if (lLattice and iLoc!=protoSeen[myProtoList[iLoc]]):
+                    protoLoc=myGrid.ret(what="LOC",iEl=iLoc)
+                    dd=-protoLoc.ret("POINT")
+                    myGeo.solidTrasform(dd=dd,lGeoDirs=lGeoDirs,lLatt=True,lDebug=lDebug)
+                    myMat=protoLoc.ret("MATRIX").inv()
+                    myGeo.solidTrasform(myMat=myMat,lGeoDirs=lGeoDirs,lLatt=tlLatt,lDebug=lDebug)
+                    tlLatt=True
+                else:
+                    tlLatt=False
+                dd=myLoc.ret("POINT")
+                myMat=myLoc.ret("MATRIX")
+                myGeo.solidTrasform(dd=dd,myMat=myMat,lGeoDirs=lGeoDirs,lLatt=tlLatt,lDebug=lDebug)
             # - flag the region(s) outside the prototypes or that should be sized
             #   by the hive cells
-            myGeo.flagRegs(osRegNames,-1,myLoc.ret("POINT"))
+            if (not lLattice or iLoc==protoSeen[myProtoList[iLoc]]):
+                myGeo.flagRegs(osRegNames,-1,myLoc.ret("POINT"))
+            else:
+                myGeo.flagRegs(["LATREG"],-1,myLoc.ret("POINT"))
             # - rename the clone
             baseName="GR%03d"%(iLoc)
             myGeo.rename(baseName)
@@ -924,106 +1121,62 @@ class Geometry():
             # - append clone to list of geometries
             myGeos.append(myGeo)
         # return merged geometry
+        print("...built %d grid elements!"%(len(myGeos)))
         return myGeos
 
     @staticmethod
-    def MergeGeos(hiveGeo,gridGeo,lDebug=True,myTitle=None,prec=0.001,enlargeFact=1.1,resBins="ALL"):
+    def MergeGeos(hiveGeo,gridGeo,mapping,mapType,lDebug=True,myTitle=None):
         '''
         This method merges one FLUKA geometry onto another one.
 
         input parameters:
         - hiveGeo: Geometry instance of the hive;
         - gridGeo: Geometry instance of the grid of objects;
-        - prec: precision of identification of points proximity [cm];
-        - enlargeFact: (safety) factor for scaling infinite bodies and USRBINs;
-        - resBins: list of units of USRBINs that should be resized;
+        - mapping: dictionary:
+          . mapping["iRhg"][ii]: ii-th hive region;
+          . mapping["jRhg"][ii]: ii-th element in hive list;
+          . mapping["iRgg"][ii]: ii-th grid region;
+          . mapping["jRgg"][ii]: ii-th element in grid list;
+        - mapType:
+          . "oneHive": one hive region contains one or more grid regions;
+          . "oneGrid": one grid region is contained in one or more hive regions;
 
         The two geometries must not have common names - no check is performed
           for the time being.
-
-        All the regions of gridGeo with rCont==-1 will be matched with regions
-          of hiveGeo with rCont==1; a one-to-one mapping is established based
-          on the rCent arrays. The merged regions will still belong to gridGeo
-          and the respective region in hiveGeo will disappear.
         '''
         print("merging geometries...")
-        if (isinstance(hiveGeo,Geometry)): hiveGeo=[hiveGeo]
-        if (isinstance(gridGeo,Geometry)): gridGeo=[gridGeo]
-        if (isinstance(enlargeFact,float) or isinstance(enlargeFact,int)):
-            if (enlargeFact<=0): enlargeFact=None
-        # hiveGeo
-        iRhgs=[]; jRhgs=[]; cRhgs=[];
-        for jj,myGeo in enumerate(hiveGeo):
-            iRhgs=iRhgs+[ ii for ii,mReg in enumerate(myGeo.regs) if mReg.rCont==1 ]
-            jRhgs=jRhgs+[ jj for mReg in myGeo.regs if mReg.rCont==1 ]
-            cRhgs=cRhgs+[ mReg.rCent for mReg in myGeo.regs if mReg.rCont==1 ]
-        cRhgs=np.array(cRhgs)
-        ucRhgs=np.unique(cRhgs,axis=0)
-        # gridGeo
-        iRggs=[]; jRggs=[]; cRggs=[];
-        for jj,myGeo in enumerate(gridGeo):
-            iRggs=iRggs+[ ii for ii,mReg in enumerate(myGeo.regs) if mReg.rCont==-1 ]
-            jRggs=jRggs+[ jj for mReg in myGeo.regs if mReg.rCont==-1 ]
-            cRggs=cRggs+[ mReg.rCent for mReg in myGeo.regs if mReg.rCont==-1 ]
-        cRggs=np.array(cRggs)
-        ucRggs=np.unique(cRggs,axis=0)
-        if (lDebug):
-            print("...found %d containing regions in hive:"%(len(iRhgs)))
-            print("   ...with %d unique centers!"%(len(ucRhgs)))
-            print(iRhgs)
-            print(jRhgs)
-            print(cRhgs)
-            print(ucRhgs)
-            print("...found %d contained/sized regions in grid:"%(len(iRggs)))
-            print("   ...with %d unique centers!"%(len(ucRggs)))
-            print(iRggs)
-            print(jRggs)
-            print(cRggs)
-            print(ucRggs)
-        if (len(iRhgs)==len(ucRhgs)):
+        removeRegs=[]; jRemoveRegs=[]
+        if (mapType=="oneHive"):
             # for each location, only one hive region is concerned:
             #   merge each containing hive region into the concerned
             #   grid regions, and then remove the hive region
-            # - merge region defs
-            removeRegs=[]; jRemoveRegs=[]
-            for iRhg,jRhg in zip(iRhgs,jRhgs):
-                for iRgg,jRgg in zip(iRggs,jRggs):
-                    if (np.linalg.norm(gridGeo[jRgg].regs[iRgg].rCent-hiveGeo[jRhg].regs[iRhg].rCent)<prec):
-                        # resize infinite bodies and USRBINs
-                        if (enlargeFact is not None or resBins is not None):
-                            newL=enlargeFact*hiveGeo[jRhg].regs[iRhg].rMaxLen
-                        if (enlargeFact is not None): gridGeo[jRgg].resizeBodies(newL,lDebug=lDebug)
-                        if (resBins is not None): gridGeo[jRgg].resizeUsrbins(newL,whichUnits=resBins,lDebug=lDebug)
-                        # actually merge
-                        gridGeo[jRgg].regs[iRgg].merge(hiveGeo[jRhg].regs[iRhg])
-                        if (hiveGeo[jRhg].regs[iRhg].echoName() not in removeRegs):
-                            removeRegs.append(hiveGeo[jRhg].regs[iRhg].echoName())
-                            jRemoveRegs.append(jRhg)
+            # - merge defs
+            for iRhg,jRhg,iRgg,jRgg in zip(mapping["iRhg"],mapping["jRhg"],mapping["iRgg"],mapping["jRgg"]):
+                gridGeo[jRgg].regs[iRgg].merge(hiveGeo[jRhg].regs[iRhg])
+                if (hiveGeo[jRhg].regs[iRhg].echoName() not in removeRegs):
+                    removeRegs.append(hiveGeo[jRhg].regs[iRhg].echoName())
+                    jRemoveRegs.append(jRhg)
             # - remove merged regs
             for removeReg,jRemoveReg in zip(removeRegs,jRemoveRegs):
                 myReg,iReg=hiveGeo[jRemoveReg].ret("REG",removeReg)
                 hiveGeo[jRemoveReg].regs.pop(iReg)
-        elif(len(iRggs)==len(ucRggs)):
+        elif(mapType=="oneGridoneHive"):
             # for each location, only one grid region is concerned:
             #   merge each contained grid region into the concerned
             #   hive regions, and then remove the grid region
-            # - merge region defs
-            removeRegs=[]; jRemoveRegs=[]
-            for iRgg,jRgg in zip(iRggs,jRggs):
-                for iRhg,jRhg in zip(iRhgs,jRhgs):
-                    if (np.linalg.norm(gridGeo[jRgg].regs[iRgg].rCent-hiveGeo[jRhg].regs[iRhg].rCent)<prec):
-                        hiveGeo[jRhg].regs[iRhg].merge(gridGeo[jRgg].regs[iRgg])
-                        if (gridGeo[jRgg].regs[iRgg].echoName() not in removeRegs):
-                            removeRegs.append(gridGeo[jRgg].regs[iRgg].echoName())
-                            jRemoveRegs.append(jRgg)
+            # - merge defs
+            for iRhg,jRhg,iRgg,jRgg in zip(mapping["iRhg"],mapping["jRhg"],mapping["iRgg"],mapping["jRgg"]):
+                hiveGeo[jRhg].regs[iRhg].merge(gridGeo[jRgg].regs[iRgg])
+                if (gridGeo[jRgg].regs[iRgg].echoName() not in removeRegs):
+                    removeRegs.append(gridGeo[jRgg].regs[iRgg].echoName())
+                    jRemoveRegs.append(jRgg)
             # - remove merged regs
-            for removeReg in removeRegs:
+            for removeReg,jRemoveReg in zip(removeRegs,jRemoveRegs):
                 myReg,iReg=gridGeo[jRemoveReg].ret("REG",removeReg)
                 gridGeo[jRemoveReg].regs.pop(iReg)
         else:
-            print("...cannot merge more than a region of the hive and more than a region of the grid for a single location!")
+            print("...wrong specification of mapping: %s!"%(mapType))
             exit(1)
-            
         return Geometry.appendGeometries(hiveGeo+gridGeo,myTitle=myTitle)
 
     @staticmethod
@@ -1066,9 +1219,11 @@ class Geometry():
 
         newGeom.bods=bodies
         newGeom.regs=regions
-        
+
+        newGeom,myGeo,mapping,mapType=MapGridLocsOntoHiveLocs(newGeom,myGeo,lDebug=lDebug)
+        mergedGeo=Geometry.MergeGeos(newGeom,myGeo,mapping,mapType,lDebug=lDebug,myTitle=myGeo.title)
         print('...done.')
-        return Geometry.MergeGeos(newGeom,myGeo,lDebug=lDebug,myTitle=myGeo.title)
+        return mergedGeo
 
 def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
     '''
@@ -1106,9 +1261,118 @@ def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
         
     return myGeos
 
+def MapGridLocsOntoHiveLocs(hiveGeo,gridGeo,lDebug=True,prec=0.001):
+    '''
+    This method maps a grid of FLUKA geometries onto the hive.
+
+    input parameters:
+    - hiveGeo: list of Geometry instance(s) of the hive;
+    - gridGeo: list of Geometry instance(s) of the grid;
+    - prec: precision of identification of points proximity [cm];
+
+    output parameters:
+    - mapping: dictionary:
+      . mapping["iRhg"][ii]: ii-th hive region;
+      . mapping["jRhg"][ii]: ii-th element in hive list;
+      . mapping["iRgg"][ii]: ii-th grid region;
+      . mapping["jRgg"][ii]: ii-th element in grid list;
+    - mapType:
+      . "oneHive": one hive region contains one or more grid regions;
+      . "oneGrid": one grid region is contained in one or more hive regions;
+
+    All the regions of gridGeo with rCont==-1 will be matched with regions
+      of hiveGeo with rCont==1; a one-to-one mapping is established based
+      on the rCent arrays.
+    '''
+    print("mapping grid and hive geometries...")
+    if (isinstance(hiveGeo,Geometry)): hiveGeo=[hiveGeo]
+    if (isinstance(gridGeo,Geometry)): gridGeo=[gridGeo]
+    # hiveGeo
+    iRhgs=[]; jRhgs=[]; cRhgs=[];
+    for jj,myGeo in enumerate(hiveGeo):
+        iRhgs=iRhgs+[ ii for ii,mReg in enumerate(myGeo.regs) if mReg.rCont==1 ]
+        jRhgs=jRhgs+[ jj for mReg in myGeo.regs if mReg.rCont==1 ]
+        cRhgs=cRhgs+[ mReg.rCent for mReg in myGeo.regs if mReg.rCont==1 ]
+    cRhgs=np.array(cRhgs)
+    ucRhgs=np.unique(cRhgs,axis=0)
+    # gridGeo
+    iRggs=[]; jRggs=[]; cRggs=[];
+    for jj,myGeo in enumerate(gridGeo):
+        iRggs=iRggs+[ ii for ii,mReg in enumerate(myGeo.regs) if mReg.rCont==-1 ]
+        jRggs=jRggs+[ jj for mReg in myGeo.regs if mReg.rCont==-1 ]
+        cRggs=cRggs+[ mReg.rCent for mReg in myGeo.regs if mReg.rCont==-1 ]
+    cRggs=np.array(cRggs)
+    ucRggs=np.unique(cRggs,axis=0)
+    # output
+    mapping={"iRhg":[],"jRhg":[],"iRgg":[],"jRgg":[]}
+    if (lDebug):
+        print("...found %d containing regions in hive:"%(len(iRhgs)))
+        print("   ...with %d unique centers!"%(len(ucRhgs)))
+        print(iRhgs)
+        print(jRhgs)
+        print(cRhgs)
+        print(ucRhgs)
+        print("...found %d contained/sized regions in grid:"%(len(iRggs)))
+        print("   ...with %d unique centers!"%(len(ucRggs)))
+        print(iRggs)
+        print(jRggs)
+        print(cRggs)
+        print(ucRggs)
+    if (len(iRhgs)==len(ucRhgs)):
+        # for each location, only one hive region is concerned:
+        #   merge each containing hive region into the concerned
+        #   grid region(s), and then remove the hive region
+        mapType="oneHive"
+        for iRhg,jRhg in zip(iRhgs,jRhgs):
+            for iRgg,jRgg in zip(iRggs,jRggs):
+                if (np.linalg.norm(gridGeo[jRgg].regs[iRgg].rCent-hiveGeo[jRhg].regs[iRhg].rCent)<prec):
+                    mapping["iRhg"].append(iRhg)
+                    mapping["jRhg"].append(jRhg)
+                    mapping["iRgg"].append(iRgg)
+                    mapping["jRgg"].append(jRgg)
+    elif(len(iRggs)==len(ucRggs)):
+        # for each location, only one grid region is concerned:
+        #   merge each contained grid region into the concerned
+        #   hive region(s), and then remove the grid region
+        mapType="oneGrid"
+        for iRgg,jRgg in zip(iRggs,jRggs):
+            for iRhg,jRhg in zip(iRhgs,jRhgs):
+                if (np.linalg.norm(gridGeo[jRgg].regs[iRgg].rCent-hiveGeo[jRhg].regs[iRhg].rCent)<prec):
+                    mapping["iRhg"].append(iRhg)
+                    mapping["jRhg"].append(jRhg)
+                    mapping["iRgg"].append(iRgg)
+                    mapping["jRgg"].append(jRgg)
+    else:
+        print("...cannot map more than a region of the hive and more than a region of the grid for a single location!")
+        exit(1)
+        
+    return hiveGeo, gridGeo, mapping, mapType
+
+def ResizeBodies(hiveGeo,gridGeo,mapping,lDebug=True,enlargeFact=1.1):
+    if (enlargeFact is not None):
+        print("resizing grid bodies...")
+        for iRhg,jRhg,iRgg,jRgg in zip(mapping["iRhg"],mapping["jRhg"],mapping["iRgg"],mapping["jRgg"]):
+            newL=enlargeFact*hiveGeo[jRhg].regs[iRhg].rMaxLen
+            gridGeo[jRgg].resizeBodies(newL,lDebug=lDebug)
+        print("...done;")
+    return gridGeo
+
+def ResizeUSRBINs(hiveGeo,gridGeo,mapping,lDebug=True,enlargeFact=1.1,resBins="ALL"):
+    if (enlargeFact is not None and resBins is not None):
+        print("resizing USRBINs...")
+        for iRhg,jRhg,iRgg,jRgg in zip(mapping["iRhg"],mapping["jRhg"],mapping["iRgg"],mapping["jRgg"]):
+            newL=enlargeFact*hiveGeo[jRhg].regs[iRhg].rMaxLen
+            gridGeo[jRgg].resizeUsrbins(newL,whichUnits=resBins,lDebug=lDebug)
+        print("...done;")
+    return gridGeo
+
 if (__name__=="__main__"):
     lDebug=False
     lGeoDirs=False
+    lLattice=True
+    echoHiveInp="hive.inp"
+    echoGridInp="grid.inp"
+    osRegNames=["OUTER"]
     # # - manipulate a geometry
     # caloCrysGeo=Geometry.fromInp("caloCrys.inp")
     # myMat=RotMat(myAng=60,myAxis=3,lDegs=True,lDebug=lDebug)
@@ -1118,6 +1382,8 @@ if (__name__=="__main__"):
     # - test generation of geometry
     R=75
     dR=50
+    Rmin=R
+    Rmax=R+dR
     NR=2
     Tmin=-20.0 # theta [degs] --> range: -Tmax:Tmax
     Tmax=20.0  # theta [degs] --> range: -Tmax:Tmax
@@ -1125,26 +1391,30 @@ if (__name__=="__main__"):
     Pmin=-7.5
     Pmax=7.5   # phi [degs] --> range: -Pmax:Pmax
     NP=5       # number of steps (i.e. grid cells)
-    # Tmax=3.0  # theta [degs] --> range: -Tmax:Tmax
-    # NT=4      # number of steps (i.e. grid cells)
-    # Pmax=2.0  # phi [degs] --> range: -Pmax:Pmax
-    # NP=3      # number of steps (i.e. grid cells)
     
     # - hive geometry
-    HiveGeo=Geometry.DefineHive_SphericalShell(R,R+dR,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
-    # HiveGeo.echo("hive.inp")
+    HiveGeo=Geometry.DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,whichMaxLen=None,lDebug=lDebug)
+    if (echoHiveInp is not None): HiveGeo.echo(echoHiveInp)
     
-    # - gridded crystals
-    #   acquire geometries
+    # - gridded geometry
+    #   acquire prototype geometries
     fileNames=[ "caloCrys_02.inp" ] ; geoNames=fileNames
     myProtoGeos=acquireGeometries(fileNames,geoNames=geoNames,lMakeRotatable=not lGeoDirs);
+    #   generate gridded geometry:
+    #   . generate grid
     cellGrid=grid.SphericalShell(R,R+dR,NR,-Tmax,Tmax,NT,Pmin,Pmax,NP,lDebug=lDebug)
+    #   . associate a prototype to each cell
     myProtoList=[ "caloCrys_02.inp" for ii in range(len(cellGrid)) ]
-    GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=["OUTER"],lGeoDirs=lGeoDirs,lDebug=lDebug)
-    
-    (Geometry.appendGeometries(GridGeo)).echo("grid.inp")
+    lTrigScoring=[ (0<=ii and ii<=2) for ii in range(len(cellGrid)) ]
+    #   . generate geometry
+    GridGeo=Geometry.BuildGriddedGeo(cellGrid,myProtoList,myProtoGeos,osRegNames=osRegNames,lLattice=lLattice,lTrigScoring=lTrigScoring,lGeoDirs=lGeoDirs,lDebug=lDebug)
+    if (echoGridInp is not None): (Geometry.appendGeometries(GridGeo)).echo(echoGridInp)
     
     # - merge geometries
-    mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,lDebug=lDebug,resBins=25)
+    #   get mapping (HiveGeo and GridGeo become lists, in case they are simple instances of Geoemtry)
+    HiveGeo,GridGeo,mapping,mapType=MapGridLocsOntoHiveLocs(HiveGeo,GridGeo,lDebug=lDebug)
+    GridGeo=ResizeBodies(HiveGeo,GridGeo,mapping,lDebug=lDebug)
+    GridGeo=ResizeUSRBINs(HiveGeo,GridGeo,mapping,lDebug=lDebug,resBins=25)
+    mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,mapping,mapType,lDebug=lDebug)
     mergedGeo.reAssiginUSRBINunits(nMaxBins=35*35*5000,usedUnits=26)
     mergedGeo.echo("merged.inp")
