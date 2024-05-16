@@ -2,9 +2,11 @@
 # A. Mereghetti, 2024/04/16
 # python version: >= 3.8.10
 
-StringPrec=1.0E-14 # prec in determining integer values
+StringPrec=2.0E-13 # prec in determining integer values
 MaxLineLength=132
 LineHeader="%13s"%("")
+begLineGLOB="* \n"+"* "+"="*(MaxLineLength-2)
+endLineGLOB="* "+"-"*(MaxLineLength-2)+"\n* "
 # FREE format:
 cut0sFREE="0"*4
 expDigitsFREE=22
@@ -146,3 +148,8 @@ def cleanRegLine(myLine,remSpaceAfters=remSpaceAfters,addSpaceAfters=addSpaceAft
         myRep="%1s "%(addSpaceAfter)
         oLine=oLine.replace(addSpaceAfter,myRep)
     return oLine
+
+def HighLightComment(myString,begLine=None,endLine=None):
+    if (begLine is None): begLine=begLineGLOB
+    if (endLine is None): endLine=endLineGLOB
+    return begLine+"\n* "+myString+" \n"+endLine

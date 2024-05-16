@@ -10,6 +10,7 @@ from body import Body
 from region import Region
 from transformation import RotDefi, Transformation
 from scorings import Usrbin
+from FLUKA import HighLightComment
 
 class Geometry():
     '''
@@ -75,12 +76,12 @@ class Geometry():
             iEntry=0
         self.tras[iEntry].AddRotDefi(tmpRotDefi)
 
-    def headMe(self,myString,begLine="* \n"+"* "+"="*130,endLine="* "+"-"*130+"\n* "):
+    def headMe(self,myString,begLine=None,endLine=None):
         '''
         simple method to head a string to the geometry declaration (bodies,
            regions, assignma, usrbin, rot-defi cards)
         '''
-        actualString=begLine+"\n* "+myString+" \n"+endLine
+        actualString=HighLightComment(myString,begLine=begLine,endLine=endLine)
         if (len(self.bods)>0):
             self.bods[0].headMe(actualString)
         if (len(self.regs)>0):
@@ -140,7 +141,7 @@ class Geometry():
                         break
         elif (myKey.upper().startswith("TRANSFLINKEDTOBODY")):
             if (myValue.upper()=="ALL"):
-                myEntry=list(set([ body.retTransformName() for body in self.bods if body.isLinkedToTransform() ]))
+                myEntry=list(set([ body.retTransformName() for body in self.bods if body.isLinkedToTransform() ])) # unique entries!
                 iEntry=[]
                 for tEntry in myEntry:
                     mE,iE=self.ret("transf",tEntry)
@@ -155,9 +156,26 @@ class Geometry():
                 else:
                     print("cannot find body named %s!"%(myValue))
                     exit(1)
+        elif (myKey.upper().startswith("TRANSFLINKEDTOLAT")):
+            if (myValue.upper()=="ALL"):
+                myEntry=list(set([ reg.echoTransformName() for reg in self.regs if reg.isLattice() and reg.isLinkedToTransform() ])) # unique entries!
+                iEntry=[]
+                for tEntry in myEntry:
+                    mE,iE=self.ret("transf",tEntry)
+                    iEntry.append(iE)
+                lFound=True
+            else:
+                mE,iE=self.ret("lat",myValue)
+                if (mE is not None):
+                    if (mE.isLinkedToTransform()):
+                        myEntry,iEntry=self.ret("transf",mE.echoTransformName())
+                        lFound=myEntry is None
+                else:
+                    print("cannot find body named %s!"%(myValue))
+                    exit(1)
         elif (myKey.upper().startswith("TRANSFLINKEDTOUSRBIN")):
             if (myValue.upper()=="ALL"):
-                myEntry=list(set([ mbin.retTransformName() for mbin in self.bins if mbin.isLinkedToTransform() ]))
+                myEntry=list(set([ mbin.retTransformName() for mbin in self.bins if mbin.isLinkedToTransform() ])) # unique entries!
                 iEntry=[]
                 for tEntry in myEntry:
                     mE,iE=self.ret("transf",tEntry)
@@ -541,7 +559,7 @@ class Geometry():
         new.title="LATTICE of %s"%(myGeo.title)
         return new
 
-    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lGeoDirs=False,lLatt=False,lDebug=False):
+    def solidTrasform(self,dd=None,myMat=None,myTheta=None,myAxis=3,lDegs=True,lGeoDirs=False,lOnlyGeo=False,lWrapGeo=False,myName="ToFinPos",myComment=None,lDebug=False):
         '''
         Bodies are applied the transformation as requested by the user:
         * first, rotation (meant to be expressed in ref sys of the object to rotate);
@@ -553,26 +571,38 @@ class Geometry():
         * the translation is applied first, then the rotation;
         * the rotation angles (azimuth) have opposite sign wrt a rotation angle
           in a right-handed system.
+
+        Booleans:
+        * lGeoDirs: if true, the transformation is applied to bodies not by modifying their
+                      definitions, but via a $start_transform geometry directive:
+                    - in case the body is already subject to a $start_transform geometry directive,
+                      the current transformation is added to its transformation;
+                    - in case the body is NOT subject to a $start_transform geometry directive,
+                      the current transformation is added to the existing list of transformations
+                      and the body linked to it;
+                    if false, the transformation is applied to bodies by modifying their definitions;
+        * lOnlyGeo: if true, the current transformation is applied only to bodies and to transformations
+                      linked to LATTICE regions; if false, the current transformation is applied also
+                      to the USRBIN cards;
+        * lWrapGeo: if true, the current transformation is wrapped around existing transformations
+                      for LATTICE regions; this is necessary when the PROTOTYPE of a LATTICE
+                      region is already part of the gridded geometry, and the gridded is being moved;
         '''
         print("applying solid transformation(s)...")
-        # the use of LATTICE cards and geometry directives are mutually exclusive,
-        #    with LATTICE cards ruling:
-        if (lLatt and lGeoDirs): lGeoDirs=False
         if (myMat is None and myTheta is None and dd is None):
             print("...no transformation provided!")
         else:
-            ROTDEFIlist=[]
-            myName="ToFinPos"
+            ROTDEFIlist=[]; ROTDEFIlistINV=[];
             if (myMat is not None):
                 print("...applying transformation expressed by matrix to geometry...")
-                if (not lGeoDirs and not lLatt):
+                if (not lGeoDirs):
                     for myBod in self.bods:
-                        myBod.rotate(myMat=myMat,myTheta=None,myAxis=None,\
-                                             lDegs=lDegs,lDebug=lDebug)
+                        myBod.rotate(myMat=myMat,myTheta=None,myAxis=None,lDegs=lDegs,lDebug=lDebug)
                 thetas=myMat.GetGimbalAngles() # [degs]
                 for myAx,myTh in enumerate(thetas,1):
                     if (myTh!=0.0):
                         ROTDEFIlist.append(RotDefi(myAx=myAx,myTh=myTh))
+                        if (lWrapGeo): ROTDEFIlistINV.append(RotDefi(myAx=myAx,myTh=-myTh))
             elif (myTheta is not None):
                 if (isinstance(myTheta,list) and isinstance(myAxis,list)):
                     if ( len(myTheta)!=len(myAxis) ):
@@ -581,15 +611,16 @@ class Geometry():
                         exit(1)
                     for myT,myAx in zip(myTheta,myAxis):
                         # iteratively call this same method, on a single angle
-                        self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lGeoDirs=lGeoDirs,lLatt=lLatt,lDebug=lDebug)
+                        self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lGeoDirs=lGeoDirs,\
+                                           lOnlyGeo=lOnlyGeo,lWrapGeo=lWrapGeo,lDebug=lDebug)
                 elif (myTheta!=0.0):
                     print("...applying rotation by %f degs around axis %d..."%\
                           (myTheta,myAxis))
-                    if (not lGeoDirs and not lLatt):
+                    if (not lGeoDirs):
                         for myBod in self.bods:
-                            myBod.rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,\
-                                                 lDegs=lDegs,lDebug=lDebug)
+                            myBod.rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                     ROTDEFIlist.append(RotDefi(myAx=myAxis,myTh=myTheta))
+                    if (lWrapGeo): ROTDEFIlistINV.append(RotDefi(myAx=myAxis,myTh=-myTheta))
             if (dd is not None):
                 print("...applying traslation array [%f,%f,%f] cm..."%\
                       (dd[0],dd[1],dd[2]))
@@ -600,35 +631,93 @@ class Geometry():
                 if (isinstance(myDD,list)):
                     myDD=np.array(DD)
                 ROTDEFIlist.append(RotDefi(myDD=myDD))
+                if (lWrapGeo): ROTDEFIlistINV.append(RotDefi(myDD=-myDD))
             if (len(ROTDEFIlist)>0):
-                # add transformation to actual position...
-                lCreate=False
-                if ( lGeoDirs or lLatt):
-                    # ...if $start_tranform directives are used
-                    myEntry, iEntry = self.ret("TRANSF",myName)
-                    lCreate=myEntry is None
-                if ( not lCreate ):
-                    # ...if USRBINs are present without ROTPRBIN cards
-                    for myBin in self.bins:
-                        if ( not myBin.isLinkedToTransform() ):
-                            lCreate=True
-                            myBin.assignTransformName(myName)
-                if (lCreate):
-                    myEntry,iEntry=self.ret("TRANSF",myName)
-                    if (myEntry is None):
-                        print("...adding the final transformation to (existing) list of transformations...")
-                        self.add(Transformation(myID=len(self.tras),myName=myName),what="tras")
-                # - add list of ROT-DEFIs for the solid transformation to the list
-                #   of existing transformation
-                for myTras in self.tras:
-                    myTras.AddRotDefis(reversed(deepcopy(ROTDEFIlist)),iAdd=0)
-                # - link solid trasformation
+                # add transformation:
+
+                # bodies
                 if (lGeoDirs):
+                    lCreate=False; Tname="%s_bdy"%(myName); tTrasfs=[]
                     for myBod in self.bods:
-                        myBod.linkTransformName(Tname=myName)
-                if (lLatt):
-                    for myReg in self.regs:
-                        myReg.assignTrasf(myTrasfName=myName)
+                        if (myBod.isLinkedToTransform()):
+                            myTname=myBod.retTransformName()
+                            if (myTname not in tTrasfs): tTrasfs.append(myTname)
+                        else:
+                            myBod.linkTransformName(Tname=Tname)
+                            if (not lCreate): lCreate=True
+                    # current transformation alone
+                    if (lCreate):
+                        myEntry,iEntry=self.ret("TRANSF",Tname)
+                        if (myEntry is None):
+                            tTrasfs.append(Tname)
+                            print("...adding the transformation %s to (existing) list of transformations - Bodies part..."%(Tname))
+                            self.add(Transformation(myID=len(self.tras)+1,myName=Tname),what="tras")
+                    # append current transformation to existing ones
+                    for myTrasName in tTrasfs:
+                        if (lDebug): print("...updating BODY %s ROT-DEFI cards..."%(myTrasName))
+                        myTras,iEntry=self.ret("transf",myTrasName)
+                        myTras.AddRotDefis(reversed(deepcopy(ROTDEFIlist)),iAdd=0)
+                    # add comment, in case
+                    if (lCreate and myComment is not None):
+                        myEntry,iEntry=self.ret("TRANSF",Tname)
+                        myEntry.headMe(myComment)
+                
+                # LATTICEs
+                lCreate=False; Tname="%s_lat"%(myName); tTrasfs=[]
+                for myReg in self.regs:
+                    if myReg.isLattice():
+                        if (myReg.isLinkedToTransform()):
+                            myTname=myReg.echoTransformName()
+                            if (myTname not in tTrasfs): tTrasfs.append(myTname)
+                        else:
+                            myReg.assignTrasf(myTrasfName=Tname)
+                            if (not lCreate): lCreate=True
+                # current transformation alone
+                if (lCreate):
+                    myEntry,iEntry=self.ret("TRANSF",Tname)
+                    if (myEntry is None):
+                        tTrasfs.append(Tname)
+                        print("...adding the transformation %s to (existing) list of transformations - LATTICE part..."%(Tname))
+                        self.add(Transformation(myID=len(self.tras)+1,myName=Tname),what="tras")
+                # append current transformation to existing ones
+                for myTrasName in tTrasfs:
+                    if (lDebug): print("...updating LATTICE %s ROT-DEFI cards..."%(myTrasName))
+                    myTras,iEntry=self.ret("transf",myTrasName)
+                    myTras.AddRotDefis(reversed(deepcopy(ROTDEFIlist)),iAdd=0)
+                    if (lWrapGeo):
+                        if (lDebug): print("    ...wrapped!")
+                        myTras.AddRotDefis(reversed(deepcopy(ROTDEFIlistINV)),iAdd=-1)
+                # add comment, in case
+                if (lCreate and myComment is not None):
+                    myEntry,iEntry=self.ret("TRANSF",Tname)
+                    myEntry.headMe(myComment)
+                
+                # USRBIN part
+                if (not lOnlyGeo):
+                    lCreate=False; Tname="%s_bin"%(myName); tTrasfs=[]
+                    for myBin in self.bins:
+                        if ( myBin.isLinkedToTransform() ):
+                            myTname=myBin.retTransformName()
+                            if (myTname not in tTrasfs): tTrasfs.append(myTname)
+                        else:
+                            myBin.assignTransformName(Tname)
+                            if (not lCreate): lCreate=True
+                    # current transformation alone
+                    if (lCreate):
+                        myEntry,iEntry=self.ret("TRANSF",Tname)
+                        if (myEntry is None):
+                            tTrasfs.append(Tname)
+                            print("...adding the transformation %s to (existing) list of transformations - USRBIN part..."%(Tname))
+                            self.add(Transformation(myID=len(self.tras)+1,myName=Tname),what="tras")
+                    # append current transformation to existing ones
+                    for myTrasName in tTrasfs:
+                        if (lDebug): print("...updating USRBIN %s ROT-DEFI cards..."%(myTrasName))
+                        myTras,iEntry=self.ret("transf",myTrasName)
+                        myTras.AddRotDefis(reversed(deepcopy(ROTDEFIlist)),iAdd=0)
+                    # add comment, in case
+                    if (lCreate and myComment is not None):
+                        myEntry,iEntry=self.ret("TRANSF",Tname)
+                        myEntry.headMe(myComment)
                     
         print("...done.")
 
@@ -826,6 +915,32 @@ class Geometry():
                 whichBin.resize(newL,axis=3)
                 if (lDebug): print(whichBin.echo())
         if (lDebug): print("...done;")
+
+    def checkTransformations(self):
+        '''
+        Check that ROT-DEFI cards serve either only $start_transform directives,
+           or only LATTICE regions or USRBIN cards;
+        '''
+        print("checking that every ROT-DEFI serve either only $start_transform directives,")
+        print("   or only LATTICE regions or USRBIN card...")
+        bodTrasfNames,iEntry=self.ret("TRANSFLINKEDTOBODY","ALL")
+        latTrasfNames,iEntry=self.ret("TRANSFLINKEDTOLAT","ALL")
+        binTrasfNames,iEntry=self.ret("TRANSFLINKEDTOUSRBIN","ALL")
+        lShared=False
+        for bodTrasfName in bodTrasfNames:
+            if (bodTrasfName in latTrasfNames):
+                print("...ROT-DEFI %s used for both $start_transform directives and LATTICE regions!"%(bodTrasfName))
+                lShared=True
+        for latTrasfName in latTrasfNames:
+            if (latTrasfName in binTrasfNames):
+                print("...ROT-DEFI %s used for both LATTICE regions and USRBIN scoring cards!"%(latTrasfName))
+                lShared=True
+        for binTrasfName in binTrasfNames:
+            if (binTrasfName in bodTrasfNames):
+                print("...ROT-DEFI %s used for both USRBIN scoring cards and $start_transform directives!"%(binTrasfName))
+                lShared=True
+        print("...done.")
+        return lShared
 
     @staticmethod
     def DefineHive_SphericalShell(Rmin,Rmax,NR,Tmin,Tmax,NT,Pmin,Pmax,NP,defMat="VACUUM",tmpTitle="Hive for a spherical shell",lWrapBHaround=False,whichMaxLen=None,lDebug=True):
@@ -1063,48 +1178,46 @@ class Geometry():
         if (lLattice): protoSeen={ key: -1 for key in list(myProtoGeos) }
         # loop over locations, to clone prototypes
         for iLoc,myLoc in enumerate(myGrid):
+            if (lDebug): print("...grid cell %3d/%3d..."%(iLoc+1,len(myGrid)))
             if (myProtoList[iLoc] not in myProtoGeos):
                 print("Geometry.BuildGriddedGeo(): unknown prototype %s!"%(\
                         myProtoList[iLoc]))
                 exit(1)
             # - clone prototype
             if ( not lLattice or protoSeen[myProtoList[iLoc]]==-1 ):
+                if (lDebug): print("...real geometry...")
                 myGeo=Geometry.DeepCopy(myProtoGeos[myProtoList[iLoc]],lTrigScoring=lTrigScoring[iLoc])
                 if (lLattice): protoSeen[myProtoList[iLoc]]=iLoc
             else:
+                if (lDebug): print("...LATTICE cell...")
                 myGeo=Geometry.LatticeCopy(myProtoGeos[myProtoList[iLoc]],lTrigScoring=lTrigScoring[iLoc])
             # - move clone to requested location/orientation
             #   NB: give priority to angles/axis wrt matrices, for higher
             #       numerical accuracy in final .inp file
             if (len(myLoc.ret("ANGLE"))>0):
+                # angle/axis pair
                 if (lLattice and iLoc!=protoSeen[myProtoList[iLoc]]):
                     protoLoc=myGrid.ret(what="LOC",iEl=protoSeen[myProtoList[iLoc]])
                     dd=-protoLoc.ret("POINT")
-                    myGeo.solidTrasform(dd=dd,lGeoDirs=lGeoDirs,lLatt=True,lDebug=lDebug)
+                    myGeo.solidTrasform(dd=dd,lGeoDirs=lGeoDirs,lOnlyGeo=True,lDebug=lDebug)
                     myTheta=[ -angle for angle in reversed(protoLoc.ret("ANGLE")) ]
                     myAxis=[ axis for axis in reversed(protoLoc.ret("AXIS")) ]
-                    myGeo.solidTrasform(myTheta=myTheta,myAxis=myAxis,lGeoDirs=lGeoDirs,lLatt=True,lDebug=lDebug)
-                    tlLatt=True
-                else:
-                    tlLatt=False
+                    myGeo.solidTrasform(myTheta=myTheta,myAxis=myAxis,lGeoDirs=lGeoDirs,lOnlyGeo=True,lDebug=lDebug)
                 dd=myLoc.ret("POINT")
                 myTheta=myLoc.ret("ANGLE")
                 myAxis=myLoc.ret("AXIS")
-                myGeo.solidTrasform(dd=dd,myTheta=myTheta,myAxis=myAxis,\
-                                    lGeoDirs=lGeoDirs,lLatt=tlLatt,lDebug=lDebug)
+                myGeo.solidTrasform(dd=dd,myTheta=myTheta,myAxis=myAxis,lGeoDirs=lGeoDirs,lDebug=lDebug)
             else:
+                # matrix
                 if (lLattice and iLoc!=protoSeen[myProtoList[iLoc]]):
                     protoLoc=myGrid.ret(what="LOC",iEl=iLoc)
                     dd=-protoLoc.ret("POINT")
-                    myGeo.solidTrasform(dd=dd,lGeoDirs=lGeoDirs,lLatt=True,lDebug=lDebug)
+                    myGeo.solidTrasform(dd=dd,lGeoDirs=lGeoDirs,lDebug=lDebug)
                     myMat=protoLoc.ret("MATRIX").inv()
-                    myGeo.solidTrasform(myMat=myMat,lGeoDirs=lGeoDirs,lLatt=tlLatt,lDebug=lDebug)
-                    tlLatt=True
-                else:
-                    tlLatt=False
+                    myGeo.solidTrasform(myMat=myMat,lGeoDirs=lGeoDirs,lOnlyGeo=True,lDebug=lDebug)
                 dd=myLoc.ret("POINT")
                 myMat=myLoc.ret("MATRIX")
-                myGeo.solidTrasform(dd=dd,myMat=myMat,lGeoDirs=lGeoDirs,lLatt=tlLatt,lDebug=lDebug)
+                myGeo.solidTrasform(dd=dd,myMat=myMat,lGeoDirs=lGeoDirs,lDebug=lDebug)
             # - flag the region(s) outside the prototypes or that should be sized
             #   by the hive cells
             if (not lLattice or iLoc==protoSeen[myProtoList[iLoc]]):
