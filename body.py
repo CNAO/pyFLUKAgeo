@@ -50,6 +50,9 @@ class Body(GeoObject):
             myFloats=[self.P[2],self.P[0],self.Rs[0]]
         elif (self.bType=="ZCC"):
             myFloats=list(self.P[0:-1])+[self.Rs[0]]
+        elif (self.bType=="RPP"):
+            myFloats=list(self.P)+list(self.P+self.V)
+            myFloats[1::2]=myFloats[3:]
         else:
             print("body %s NOT supported yet!"%(self.bType))
             exit(1)
@@ -68,6 +71,62 @@ class Body(GeoObject):
             
     def retTransformName(self):
         return self.TransformName
+
+    def retCenter(self,myType=0):
+        '''
+        myType: specifies which center to return:
+        actual (==0), upstream (<0), downstream (>0)
+        '''
+        if (self.bType=="PLA" or self.bType=="SPH" or \
+            self.bType=="YZP" or self.bType=="XZP" or self.bType=="XYP"):
+            return self.P
+        elif (self.bType=="TRC" or self.bType=="RCC" or
+              self.bType=="XCC" or self.bType=="YCC" or self.bType=="ZCC"):
+            if (myType==0):
+                return self.P+0.5*self.V
+            elif (myType<0):
+                return self.P
+            elif (myType>0):
+                return self.P+self.V
+        elif (self.bType=="RPP"):
+            myOrient=self.retOrient()
+            if (myType==0):
+                return self.P+0.5*self.V
+            elif (myType<0):
+                return self.P+np.multiply(0.5*self.V,1-myOrient)
+            elif (myType>0):
+                return self.P+np.multiply(0.5*self.V,1-myOrient)+\
+                              np.multiply(    self.V,  myOrient)
+        
+    def retOrient(self):
+        if (self.bType=="RPP"):
+            if (self.V[0]==self.V[1] and self.V[2]==self.V[1]):
+                # actually a cube: orientation as z-axis by default
+                myV=np.array([0.0,0.0,1.0])
+            elif (self.V[0]==self.V[1] and self.V[2]!=self.V[0]):
+                # xy dims are identical: orientation as z-axis
+                myV=np.array([0.0,0.0,1.0])
+            elif (self.V[2]==self.V[0] and self.V[1]!=self.V[2]):
+                # xz dims are identical: orientation as y-axis
+                myV=np.array([0.0,1.0,0.0])
+            elif (self.V[1]==self.V[2] and self.V[0]!=self.V[1]):
+                # yz dims are identical: orientation as x-axis
+                myV=np.array([1.0,0.0,0.0])
+            else:
+                # orientation is where the largest delta is found
+                myV=np.zeros(3)
+                myV[np.argmax(self.V)]=1.0
+        else:
+            myV=self.V/np.linalg.norm(self.V)
+        return myV
+
+    def retL(self):
+        LL=0.0
+        if (self.bType=="RCC" or self.bType=="REC"):
+            LL=np.linalg.norm(self.V)
+        elif (self.bType=="RPP"):
+            LL=np.linalg.norm(np.multiply(self.retOrient(),self.V))
+        return LL
 
     def isLinkedToTransform(self):
         return self.TransformName is not None
@@ -132,6 +191,11 @@ class Body(GeoObject):
                 newBody.P[0:-1]=np.array(data[2:4]).astype(float)
                 newBody.Rs[0]=float(data[4])
                 newBody.lIsRotatable=False
+            elif (data[0]=="RPP"):
+                newBody.bType=data[0]
+                newBody.rename(data[1],lNotify=False)
+                newBody.P=np.array(data[2:7:2]).astype(float)
+                newBody.V=np.array(data[3:8:2]).astype(float)-newBody.P
             elif (tmpLine.startswith("*")):
                 newBody.tailMe(tmpLine)
             else:
@@ -143,42 +207,55 @@ class Body(GeoObject):
         if (not self.isRotatable()):
            myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
            if (self.bType=="YZP"):
-               if (lDebug):
-                   print("...converting body %s into a PLA"%(myStr))
                self.bType="PLA"
                self.V=np.array([1.0,0.0,0.0])
            elif (self.bType=="XZP"):
-               if (lDebug):
-                   print("...converting body %s into a PLA"%(myStr))
                self.bType="PLA"
                self.V=np.array([0.0,1.0,0.0])
            elif (self.bType=="XYP"):
-               if (lDebug):
-                   print("...converting body %s into a PLA"%(myStr))
                self.bType="PLA"
                self.V=np.array([0.0,0.0,1.0])
            elif (self.bType=="XCC"):
-               if (lDebug):
-                   print("...converting body %s into an RCC"%(myStr))
                self.bType="RCC"
                self.P[0]=-infL
                self.V=np.array([2*infL,0.0,0.0])
            elif (self.bType=="YCC"):
-               if (lDebug):
-                   print("...converting body %s into an RCC"%(myStr))
                self.bType="RCC"
                self.P[1]=-infL
                self.V=np.array([0.0,2*infL,0.0])
            elif (self.bType=="ZCC"):
-               if (lDebug):
-                   print("...converting body %s into an RCC"%(myStr))
                self.bType="RCC"
                self.P[2]=-infL
                self.V=np.array([0.0,0.0,2*infL])
            else:
                print("cannot make body %s rotatable!"%(myStr))
                exit(1)
+           if (lDebug):
+               print("...converted body %s into an %s"%(myStr,self.bType))
            self.lIsRotatable=True
+
+    def makeUNrotatable(self,lDebug=False,infL=1000.0):
+        if (self.isRotatable()):
+            myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
+            myV=self.retOrient()
+            if (self.bType=="PLA"):
+                if (np.allclose(myV,[1.0,0.0,0.0])):
+                    self.bType="YZP"
+                elif (np.allclose(myV,[0.0,1.0,0.0])):
+                    self.bType="XZP"
+                elif (np.allclose(myV,[0.0,0.0,1.0])):
+                    self.bType="XYP"
+            elif (self.bType=="RCC"):
+                if (np.allclose(myV,[1.0,0.0,0.0])):
+                    self.bType="XCC"
+                elif (np.allclose(myV,[0.0,1.0,0.0])):
+                    self.bType="YCC"
+                elif (np.allclose(myV,[0.0,0.0,1.0])):
+                    self.bType="ZCC"
+            else: return
+            self.lIsRotatable=False
+            if (lDebug):
+                print("...converted body %s into an %s"%(myStr,self.bType))
 
     def traslate(self,dd=None):
         if (dd is not None):
@@ -200,12 +277,11 @@ class Body(GeoObject):
                 self.rotate(myMat=myMat,myTheta=None,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
 
     def resize(self,newL,lDebug=False):
-        if (self.bType=="RCC"):
+        if (self.bType=="RCC" or self.bType=="RPP"):
            if (lDebug):
                myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
                print("...resizing body %s to L=%g"%(myStr,newL))
-           meanPoint=self.P+self.V/2.
-           versor=self.V/np.linalg.norm(self.V)
-           self.V=versor*newL
-           self.P=meanPoint-self.V/2.
+           origCenter=self.retCenter()
+           self.V=self.retOrient()*newL
+           self.P=origCenter-self.V/2.
                 
