@@ -245,7 +245,7 @@ class Body(GeoObject):
                     self.bType="XZP"
                 elif (np.allclose(myV,[0.0,0.0,1.0])):
                     self.bType="XYP"
-            elif (self.bType=="RCC"):
+            elif (self.bType=="RCC" and self.retL()>infL):
                 if (np.allclose(myV,[1.0,0.0,0.0])):
                     self.bType="XCC"
                 elif (np.allclose(myV,[0.0,1.0,0.0])):

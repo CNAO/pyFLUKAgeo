@@ -838,6 +838,10 @@ class Geometry():
         for myBod in self.bods:
             myBod.makeRotatable(lDebug=lDebug,infL=infL)
 
+    def makeBodiesUNrotatable(self,lDebug=False,infL=1000.):
+        for myBod in self.bods:
+            myBod.makeUNrotatable(lDebug=lDebug,infL=infL)
+
     def reAssiginUSRBINunits(self,nMaxBins=None,nUSRBINs=None,usedUnits=None,lDebug=False):
         if (lDebug): print("re-assigning USRBIN units...")
         if (nMaxBins is not None and nUSRBINs is not None):
