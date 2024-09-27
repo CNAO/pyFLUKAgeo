@@ -227,17 +227,22 @@ class Geometry():
         return myEntry, iEntry
 
     @staticmethod
-    def fromInp(myInpName):
+    def fromInp(myInpName,iRead=0,newGeom=None):
         '''
         FREE format used only for parsing ROT-DEFI cards (blank space as separator)!
         '''
-        newGeom=Geometry()
+        if (newGeom is None):
+            newGeom=Geometry()
+        nBods=len(newGeom.bods)
+        nRegs=len(newGeom.regs)
+        nBins=len(newGeom.bins)
+        nTras=len(newGeom.tras)
         defineFlags=[]
-        print("parsing file %s..."%(myInpName))
+        print("parsing file %s ..."%(myInpName))
         ff=open(myInpName,'r')
-        iRead=0
         lFree=False
         lReads=[True]
+        lBuffReg=iRead==3 # reading a region-only file: empty buffer
         tmpBuf=""
         regBuf=""
         for tmpLine in ff.readlines():
@@ -305,7 +310,6 @@ class Geometry():
             elif (iRead==2):
                 # definition of FLUKA bodies
                 if (tmpLine.startswith("END")):
-                    print("...acquired %d bodies;"%(len(newGeom.bods)))
                     iRead=3
                     tmpBuf="" # flush buffer
                 elif (tmpLine.startswith("$start")):
@@ -324,7 +328,6 @@ class Geometry():
                         # acquire region
                         newGeom.add(Region.fromBuf(regBuf),what="reg")
                         regBuf="" # flush region def buffer
-                    print("...acquired %d regions;"%(len(newGeom.regs)))
                     tmpBuf="" # flush buffer
                     iRead=0 # ignore LATTICE cards
                 else:
@@ -346,8 +349,20 @@ class Geometry():
                         tmpBuf="" # flush buffer
                     
         ff.close()
-        print("...acquired %d USRBIN(s);"%(len(newGeom.bins)))
-        print("...acquired %d transformation(s);"%(len(newGeom.tras)))
+        if (lBuffReg and iRead==3 and len(regBuf)>0):
+            # acquire region
+            newGeom.add(Region.fromBuf(regBuf),what="reg")
+            regBuf="" # flush region def buffer
+            tmpBuf="" # flush buffer
+            iRead=0
+        if (len(newGeom.bods)-nBods>0):
+            print("...acquired %d bodies;"%(len(newGeom.bods)-nBods))
+        if (len(newGeom.regs)-nRegs>0):
+            print("...acquired %d regions;"%(len(newGeom.regs)-nRegs))
+        if (len(newGeom.bins)-nBins>0):
+            print("...acquired %d USRBIN(s);"%(len(newGeom.bins)-nBins))
+        if (len(newGeom.tras)-nTras>0):
+            print("...acquired %d transformation(s);"%(len(newGeom.tras)-nTras))
         print("...done;")
         return newGeom
 
@@ -356,8 +371,8 @@ class Geometry():
         '''
         Barely appending geometries one to another;
         '''
-        new=Geometry()
-        for myGeo in myGeos:
+        new=deepcopy(myGeos[0])
+        for myGeo in myGeos[1:]:
             new.bods=new.bods+myGeo.bods
             new.regs=new.regs+myGeo.regs
             for ii,myTras in enumerate(myGeo.tras,1):
@@ -385,7 +400,7 @@ class Geometry():
             lSplit=True
 
         if (what.upper().startswith("BOD")):
-            print("saving bodies in file %s..."%(oFileName))
+            print("saving bodies in file %s ..."%(oFileName))
             ff=open(oFileName,dMode)
             ff.write("* \n")
             for tmpBody in self.bods:
@@ -394,7 +409,7 @@ class Geometry():
             ff.close()
             print("...done;")
         elif (what.upper().startswith("REG")):
-            print("saving regions in file %s..."%(oFileName))
+            print("saving regions in file %s ..."%(oFileName))
             ff=open(oFileName,dMode)
             ff.write("* \n")
             for tmpReg in self.regs:
@@ -405,7 +420,7 @@ class Geometry():
         elif (what.upper().startswith("LAT")):
             LatNames=self.ret("LAT","ALL")
             if (len(LatNames)>0):
-                print("saving LATTICE cards in file %s..."%(oFileName))
+                print("saving LATTICE cards in file %s ..."%(oFileName))
                 ff=open(oFileName,dMode)
                 ff.write("* \n")
                 for tmpReg in self.regs:
@@ -415,7 +430,7 @@ class Geometry():
                 ff.close()
                 print("...done;")
         elif (what.upper().startswith("TRANSF")):
-            print("saving ROT-DEFI cards in file %s..."%(oFileName))
+            print("saving ROT-DEFI cards in file %s ..."%(oFileName))
             ff=open(oFileName,dMode)
             ff.write("* \n")
             ff.write("FREE \n")
@@ -426,7 +441,7 @@ class Geometry():
             ff.close()
             print("...done;")
         elif (what.upper().startswith("MAT")):
-            print("saving ASSIGNMA cards in file %s..."%(oFileName))
+            print("saving ASSIGNMA cards in file %s ..."%(oFileName))
             ff=open(oFileName,dMode)
             ff.write("* \n")
             for tmpReg in self.regs:
@@ -435,7 +450,7 @@ class Geometry():
             ff.close()
             print("...done;")
         elif (what.upper().startswith("BIN")):
-            print("saving USRBINs in file %s..."%(oFileName))
+            print("saving USRBINs in file %s ..."%(oFileName))
             ff=open(oFileName,dMode)
             ff.write("* \n")
             for tmpBin in self.bins:
@@ -514,8 +529,8 @@ class Geometry():
             print("...what should I echo? %s NOT reconised!"%(what))
 
     @staticmethod
-    def DeepCopy(myGeo,lTrigScoring=True):
-        new=Geometry()
+    def ActualCopy(myGeo,lTrigScoring=True,new=None):
+        if (new is None): new=Geometry()
         new.bods=deepcopy(myGeo.bods)
         new.regs=deepcopy(myGeo.regs)
         myTras=deepcopy(myGeo.tras)
@@ -533,14 +548,14 @@ class Geometry():
         return new
 
     @staticmethod
-    def LatticeCopy(myGeo,lTrigScoring=True,RegName=None,LatName=None,LatMat="VACUUM"):
+    def LatticeCopy(myGeo,lTrigScoring=True,RegName=None,LatName=None,LatMat="VACUUM",new=None):
         '''
         The full geometry is copied in a single LATTICE region, no support
             for any OUTER region is provided, for the time being.
         '''
         if (RegName is None): RegName="LATREG"
         if (LatName is None): LatName=RegName
-        new=Geometry()
+        if (new is None): new=Geometry()
         myReg=Region(myName=RegName)
         myReg.assignLat(myLatName=LatName)
         myReg.material=LatMat
@@ -721,30 +736,33 @@ class Geometry():
                     
         print("...done.")
 
-    def rename(self,newName,lNotify=True):
+    def rename(self,newName,lNotify=True,nDigits=2):
         print("renaming geometry...")
         maxLenName=8
         if (len(newName)>=maxLenName):
             print("Geometry.rename(): cannot rename entities with len(%s)>=%d!"%(newName,maxLenName))
-            exit(1)
-        newNameFmt=newName+"%0"+"%d"%(maxLenName-len(newName))+"d"
+            nName=newName[0:maxLenName-nDigits]
+            print("...chopping new name to len(%s)>=%d"%(nName,len(nName)))
+        else:
+            nName=newName
+        nNameFmt=nName+"%0"+"%d"%(maxLenName-len(nName))+"d"
         oldBodyNames=[]; newBodyNames=[]
         oldTrasNames=[]; newTrasNames=[]
         for iBody,myBod in enumerate(self.bods):
             oldBodyNames.append(myBod.echoName())
-            newBodyNames.append(newNameFmt%(iBody+1))
+            newBodyNames.append(nNameFmt%(iBody+1))
             myBod.rename(newBodyNames[-1],lNotify=lNotify)
         for iReg,myReg in enumerate(self.regs):
-            myReg.rename(newNameFmt%(iReg+1),lNotify=lNotify)
+            myReg.rename(nNameFmt%(iReg+1),lNotify=lNotify)
             if (myReg.isLattice()):
-                myReg.assignLat(myLatName=newNameFmt%(iReg+1))
+                myReg.assignLat(myLatName=nNameFmt%(iReg+1))
             myReg.BodyNameReplaceInDef(oldBodyNames,newBodyNames)
         for iTras,myTras in enumerate(self.tras):
             oldTrasNames.append(myTras.echoName())
-            newTrasNames.append(newNameFmt%(iTras+1))
+            newTrasNames.append(nNameFmt%(iTras+1))
             myTras.rename(newTrasNames[-1],lNotify=lNotify)
         for iBin,myBin in enumerate(self.bins):
-            myBin.rename(newNameFmt%(iBin+1),lNotify=lNotify)
+            myBin.rename(nNameFmt%(iBin+1),lNotify=lNotify)
             if (myBin.isLinkedToTransform()):
                 trName=myBin.retTransformName()
                 lFound=False
@@ -1186,7 +1204,7 @@ class Geometry():
             # - clone prototype
             if ( not lLattice or protoSeen[myProtoList[iLoc]]==-1 ):
                 if (lDebug): print("...real geometry...")
-                myGeo=Geometry.DeepCopy(myProtoGeos[myProtoList[iLoc]],lTrigScoring=lTrigScoring[iLoc])
+                myGeo=Geometry.ActualCopy(myProtoGeos[myProtoList[iLoc]],lTrigScoring=lTrigScoring[iLoc])
                 if (lLattice): protoSeen[myProtoList[iLoc]]=iLoc
             else:
                 if (lDebug): print("...LATTICE cell...")
@@ -1337,6 +1355,89 @@ class Geometry():
         mergedGeo=Geometry.MergeGeos(newGeom,myGeo,mapping,mapType,lDebug=lDebug,myTitle=myGeo.title)
         print('...done.')
         return mergedGeo
+
+    @staticmethod
+    def CreateSlicingGeo(zLocs,P0=np.zeros(3),VV=np.array([0.0,0.0,1.0]),defMat="VACUUM",tmpTitle="Slicing Planes"):
+        '''
+        Method for generating a geometry made of a series of planes slicing something
+        '''
+        print('generating a slicing geometry...')
+        aP0=np.array(P0)
+        aVV=VV/np.linalg.norm(VV)
+        
+        newGeom=Geometry()
+        for ii,zLoc in enumerate(zLocs):
+            # body
+            tmpBD=Body(myName="BOUND%03i"%(ii+1),myComment="* boundary at z=%g"%(zLoc))
+            tmpBD.P=aP0+zLoc*aVV
+            tmpBD.V=aVV
+            # region
+            tmpReg=Region(myName="SLICE%03i"%(ii+1))
+            if (ii==0):
+                tmpReg.comment="* first slice"
+                tmpReg.addZone("+%-8s"%(tmpBD.name))
+            else:
+                tmpReg.comment="* range of slice: [%g:%g]"%(zLoc,zLocs[ii-1])
+                tmpReg.addZone("+%-8s -%-8s"%(tmpBD.name,newGeom.bods[-1].name))
+            tmpReg.material=defMat
+            # adding
+            newGeom.add(tmpBD,what="bod")
+            newGeom.add(tmpReg,what="reg")
+        # last slice
+        tmpReg=Region(myName="SLICE%03i"%(ii+2))
+        tmpReg.comment="* last slice"
+        tmpReg.addZone("-%-8s"%(newGeom.bods[-1].name))
+        tmpReg.material=defMat
+        newGeom.add(tmpReg,what="reg")
+        
+        newGeom.headMe(tmpTitle)
+        newGeom.setTitle(tmpTitle=tmpTitle)
+
+        print('...generated %d bodies and %d regions;'%(len(newGeom.bods),len(newGeom.regs)))
+        return newGeom
+
+    def SliceGeo(self,regName,zLocs,bodName=None,RegBasedScors=[],lDebug=True):
+        '''
+        Method for slicing an existing geometry:
+        - regName: name of region to be sliced;
+        - zLocs: longitudinal positions [cm] at which the region should be sliced;
+        - bodName: name of body from which starting point and direction of
+                   slicing should be taken;
+        - RegBasedScors: names of region-based scorings that should be replicated
+                    following slicing;
+
+        NB: the method applies to any region which is encapsulated in an RPP or an RCC
+        '''
+        if (bodName is None): bodName=regName # default
+        print("slicing region %s into %d sections..."%(regName,len(zLocs)+1))
+        print("...starting position and orientation as from body %s..."%(bodName))
+        # - checks
+        reg2Bsliced,iReg=self.ret("reg",regName)
+        if (reg2Bsliced is None):
+            print("   ...region %s NOT found!"%(regName))
+            exit(1)
+        orientingBody,iBod=self.ret("bod",bodName)
+        if (orientingBody is None):
+            print("   ...body %s NOT found!"%(bodName))
+            exit(1)
+        # - get infos
+        P0=orientingBody.retCenter(myType=-1)
+        PC=orientingBody.retCenter()
+        VV=orientingBody.retOrient()
+        if (lDebug):
+            print("...starting position: [%g,%g,%g];"%(P0[0],P0[1],P0[2]))
+            print("...centre:            [%g,%g,%g];"%(PC[0],PC[1],PC[2]))
+            print("...orientation:       [%g,%g,%g];"%(VV[0],VV[1],VV[2]))
+        # - build slicing geo and flag it for merging
+        slicingGeo=Geometry.CreateSlicingGeo(zLocs,P0=P0,VV=VV,defMat=reg2Bsliced.material)
+        slicingGeo.rename(regName)
+        # - take care of scorings
+        # - flag regions for merging and create mapping
+        slicingGeo.flagRegs("all",rCont=-1,rCent=PC)
+        reg2Bsliced.initCont(rCont=1,rCent=PC)
+        HiveGeo,GridGeo,mapping,mapType=MapGridLocsOntoHiveLocs(self,slicingGeo,lDebug=lDebug)
+        # - return merged geo
+        return Geometry.MergeGeos(HiveGeo,GridGeo,mapping,mapType)
 
 def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
     '''
