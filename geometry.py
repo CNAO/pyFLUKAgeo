@@ -838,6 +838,10 @@ class Geometry():
         for myBod in self.bods:
             myBod.makeRotatable(lDebug=lDebug,infL=infL)
 
+    def makeBodiesUNrotatable(self,lDebug=False,infL=1000.):
+        for myBod in self.bods:
+            myBod.makeUNrotatable(lDebug=lDebug,infL=infL)
+
     def reAssiginUSRBINunits(self,nMaxBins=None,nUSRBINs=None,usedUnits=None,lDebug=False):
         if (lDebug): print("re-assigning USRBIN units...")
         if (nMaxBins is not None and nUSRBINs is not None):
@@ -903,13 +907,14 @@ class Geometry():
         - newL: new length [cm];
         - whichUnits: units of USRBINs to be updated;
         '''
+        if (lDebug): print("resizing USRBINs...")
         if (whichUnits is None): whichUnits="ALL"
         if (isinstance(whichUnits,str)):
             if (whichUnits.upper()=="ALL"):
                 bins2mod,iBins2mod=self.ret("bin","ALL")
-                if (lDebug): print("re-sizing ALL USRBINs, i.e. %d ..."%(len(bins2mod)))
+                if (lDebug): print("...re-sizing ALL USRBINs, i.e. %d ..."%(len(bins2mod)))
             else:
-                print("Cannot specify USRBIN names for resizing!")
+                print("Geometry.resizeUsrbins(): Cannot specify USRBIN names for resizing!")
                 exit(1)
         elif (isinstance(whichUnits,float) or isinstance(whichUnits,int)):
             bins2mod,iBins2mod=self.ret("BININUNIT",whichUnits)
@@ -924,7 +929,7 @@ class Geometry():
                 else:
                     bins2mod.append(tBins2mod)
         else:
-            print("Wrong indication of USRBINs for resizing!")
+            print("Geometry.resizeUsrbins(): Wrong indication of USRBINs for resizing!")
             print(whichUnits)
             exit(1)
         if (bins2mod is not None):
@@ -934,6 +939,36 @@ class Geometry():
                 if (lDebug): print(whichBin.echo())
         if (lDebug): print("...done;")
 
+    def moveUsrbins(self,myCoord,axes=3,whichBins=None,lAbs=True,lDebug=False):
+        if (lDebug): print("moving USRBINs...")
+        if (whichBins is None): whichBins="ALL"
+        if (isinstance(whichBins,str)):
+            if (whichBins.upper()=="ALL"):
+                bins2mod,iBins2mod=self.ret("bin","ALL")
+                if (lDebug): print("...moving ALL USRBINs, i.e. %d ..."%(len(bins2mod)))
+            else:
+                print("Geometry.resizeUsrbins(): Cannot specify USRBIN names for moving!")
+                exit(1)
+        elif (isinstance(whichBins,list)):
+            bins2mod=[]; iBins2mod=[]
+            for whichBin in whichBins:
+                tBins2mod,tIBins2mod=self.ret("BIN",whichBin)
+                if (isinstance(tBins2mod,list)):
+                    bins2mod=bins2mod+tBins2mod
+                    print("moving %d USRBINs named %s ..."%(len(tBins2mod),whichBin))
+                else:
+                    bins2mod.append(tBins2mod)
+                    print("moving USRBIN named %s ..."%(whichBin))
+        else:
+            print("Geometry.resizeUsrbins(): Wrong indication of USRBINs for moving!")
+            print(whichBins)
+            exit(1)
+        if (bins2mod is not None):
+            for bin2mod in bins2mod:
+                bin2mod.move(myCoord,axes=axes,lAbs=lAbs)
+                if (lDebug): print(whichBin.echo())
+        if (lDebug): print("...done;")
+        
     def checkTransformations(self):
         '''
         Check that ROT-DEFI cards serve either only $start_transform directives,
