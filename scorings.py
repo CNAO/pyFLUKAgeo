@@ -3,6 +3,7 @@
 # python version: >= 3.8.10
 
 from FLUKA import GeoObject, echoFloats
+import numpy as np
 
 class Usrbin(GeoObject):
     '''
@@ -48,7 +49,7 @@ class Usrbin(GeoObject):
             elif (myLine.startswith("ROTPRBIN")):
                 newUsrBin.assignTransformName(myLine[20:30].strip())
                 if (len(newUsrBin.TransfName)==0):
-                    print("...something wrong when parsing USRBIN cards: no ROT-DEFI card name!")
+                    print("Usrbin.fromBuf(): something wrong when parsing USRBIN cards: no ROT-DEFI card name!")
                     exit(1)
             else:
                 newUsrBin.definition.append(myLine[10:70])
@@ -56,11 +57,11 @@ class Usrbin(GeoObject):
                     # from first line defining USRBIN, get USRBIN name
                     newUsrBin.rename(myLine[70:].strip(),lNotify=False)
         if (len(newUsrBin.definition)!=2):
-            print("...something wrong when parsing USRBIN cards: got %d lines!"\
+            print("Usrbin.fromBuf(): something wrong when parsing USRBIN cards: got %d lines!"\
                   %(len(newUsrBin.definition)))
             exit(1)
         if (len(newUsrBin.name)==0):
-            print("...something wrong when parsing USRBIN cards: no name!")
+            print("Usrbin.fromBuf(): something wrong when parsing USRBIN cards: no name!")
             exit(1)
         return newUsrBin
 
@@ -74,11 +75,20 @@ class Usrbin(GeoObject):
             self.definition[0]=self.definition[0][ 0:20]+echoFloats( abs(myUnit),lFree=lFree)[0]+ \
                                self.definition[0][30:]
 
+    def getBinType(self):
+        return int(abs(float(self.definition[0][0:10]))+1E-4)
     def isSpecialBinning(self):
-        binType=int(abs(float(self.definition[0][0:10]))+1E-4)
+        binType=self.getBinType()
         return binType==2.0 or binType==12.0 or binType==8.0 or binType==18.0
+    def isCartesianBinning(self):
+        binType=self.getBinType()
+        return binType==0.0 or binType==10.0
+    def isCylindricalBinning(self):
+        binType=self.getBinType()
+        return binType==1.0 or binType==11.0
 
     def getNbins(self,axes="all"):
+        'ONLY FIXED FORMAT DEFINITION'
         nBins=None
         if (not self.isSpecialBinning() ):
             if (isinstance(axes,list)):
@@ -95,12 +105,12 @@ class Usrbin(GeoObject):
                 elif (axes.upper()=="Z"):
                     nBins=self.getNbins(axes=[3])
                 else:
-                    print("cannot get number of bins on ax specified as %s!"%(axes))
+                    print("Usrbin.getNbins(): cannot get number of bins on ax specified as %s!"%(axes))
                     exit(1)
             elif (1<=axes and axes<=3):
                 nBins=int(abs(float(self.definition[1][30+(axes-1)*10:40+(axes-1)*10]))+1E-4)
             else:
-                print("cannot get number of bins on ax %d [1:3]!"%(axes))
+                print("Usrbin.getNbins(): cannot get number of bins on ax %d [1:3]!"%(axes))
                 exit(1)
         return nBins
     def setNbins(self,nBins=[1],axes=[3],lFree=False):
@@ -109,11 +119,11 @@ class Usrbin(GeoObject):
             if (axes.upper()=="ALL"):
                 axes=[1,2,3]
             else:
-                print("cannot set nBins to ax %s!"%(axes))
+                print("Usrbin.setNbins(): cannot set nBins to ax %s!"%(axes))
                 exit(1)
         if (isinstance(nBins,float) or isinstance(nBins,int)): nBins=[nBins]
         if (len(axes)!=len(nBins)):
-            print("len(axes)!=len(nBins)! axes=",axes,"; nBins=",nBins)
+            print("Usrbin.setNbins(): len(axes)!=len(nBins)! axes=",axes,"; nBins=",nBins)
             exit(1)
         for myN,myAx in zip(nBins,axes):
             if (myAx<3):
@@ -123,10 +133,11 @@ class Usrbin(GeoObject):
                 self.definition[1]=self.definition[1][0:30+10*(myAx-1)]+\
                    echoFloats(myN,lFree=lFree)[0]
             else:
-                print("cannot set %d bins to axis %d!"%(myN,myAx))
+                print("Usrbin.setNbins(): cannot set %d bins to axis %d!"%(myN,myAx))
                 exit(1)
 
     def getExtremes(self,axes=3):
+        'ONLY FIXED FORMAT DEFINITION'
         myMin=None; myMax=None
         if (isinstance(axes,list)):
             myMin=[]; myMax=[]
@@ -134,66 +145,104 @@ class Usrbin(GeoObject):
                 tmpMin,tmpMax=self.getExtremes(axes=myAx)
                 myMin.append(tmpMin); myMax.append(tmpMax)
         elif (isinstance(axes,float) or isinstance(axes,int)):
-            if (1<=axes and axes<=2):
+            if (axes==1):
                 myMax=float(self.definition[0][30+(axes-1)*10:30+axes*10])
+            elif (axes==2):
+                if (self.isCylindricalBinning()):
+                    myMax=np.pi
+                else:
+                    myMax=float(self.definition[0][30+(axes-1)*10:30+axes*10])
             elif (axes==3):
                 myMax=float(self.definition[0][30+(axes-1)*10:          ])
             else:
-                print("cannot get extremes of bin on axis %d!"%(axes))
+                print("Usrbin.getExtremes(): cannot get extremes of bin on axis %d!"%(axes))
                 exit(1)
-            myMin=float(self.definition[1][ (axes-1)*10:axes*10])
+            if (axes==2 and self.isCylindricalBinning()):
+                myMin=-np.pi
+            else:
+                myMin=float(self.definition[1][ (axes-1)*10:axes*10])
         elif (isinstance(axes,str)):
             if (axes.upper()=="X"):
-                myMin,myMax=self.getExtremes(self,axes=1)
+                myMin,myMax=self.getExtremes(axes=1)
             elif (axes.upper()=="Y"):
-                myMin,myMax=self.getExtremes(self,axes=2)
+                myMin,myMax=self.getExtremes(axes=2)
             elif (axes.upper()=="Z"):
-                myMin,myMax=self.getExtremes(self,axes=3)
+                myMin,myMax=self.getExtremes(axes=3)
             else:
-                print("cannot get extremes of bin on axis %s!"%(axes))
+                print("Usrbin.getExtremes(): cannot get extremes of bin on axis %s!"%(axes))
                 exit(1)
         return myMin,myMax
     def setExtremes(self,myMin,myMax,axes=3,lFree=False):
         if (isinstance(myMin,list) and isinstance(myMax,list) and isinstance(axes,list)):
             if (len(myMin)!=len(myMax) or len(myMin)!=len(axes)):
-                print("cannot set min=",myMin,",max=",myMax,"axes",axes)
+                print("Usrbin.setExtremes(): cannot set min=",myMin,",max=",myMax,"axes",axes)
                 exit(1)
             for tMin,tMax,tAx in zip(myMin,myMax,axes):
-                self.setExtremes(tMin,tMax,axes=tAx)
+                self.setExtremes(tMin,tMax,axes=tAx,lFree=lFree)
         elif (not isinstance(myMin,list) and not isinstance(myMax,list) and not isinstance(axes,list)):
             myMinStr=echoFloats(myMin,lFree=lFree)[0]
             myMaxStr=echoFloats(myMax,lFree=lFree)[0]
             if (isinstance(axes,float) or isinstance(axes,int)):
-                if (1<=axes and axes<=2):
+                if (axes==1):
                     self.definition[0]=self.definition[0][:30+(axes-1)*10]+\
                                        myMaxStr+\
                                        self.definition[0][30+axes*10:]
+                elif (axes==2):
+                    if (self.isCylindricalBinning()):
+                        print("...cylindrical binning: cannot set extremes on second axis!")
+                        print("   skipping request;")
+                    else:
+                        self.definition[0]=self.definition[0][:30+(axes-1)*10]+\
+                                           myMaxStr+\
+                                           self.definition[0][30+axes*10:]
                 elif (axes==3):
                     self.definition[0]=self.definition[0][:30+(axes-1)*10]+\
                                        myMaxStr
                 else:
-                    print("cannot set extremes of bin on axis %d!"%(axes))
+                    print("Usrbin.setExtremes(): cannot set extremes of bin on axis %d!"%(axes))
                     exit(1)
                 self.definition[1]=self.definition[1][:(axes-1)*10]+\
                                    myMinStr+\
                                    self.definition[1][axes*10:]
             elif (isinstance(axes,str)):
                 if (axes.upper()=="X"):
-                    self.setExtremes(self,myMin,myMax,axes=1)
+                    self.setExtremes(myMin,myMax,axes=1,lFree=lFree)
                 elif (axes.upper()=="Y"):
-                    self.setExtremes(self,myMin,myMax,axes=2)
+                    self.setExtremes(myMin,myMax,axes=2,lFree=lFree)
                 elif (axes.upper()=="Z"):
-                    self.setExtremes(self,myMin,myMax,axes=3)
+                    self.setExtremes(myMin,myMax,axes=3,lFree=lFree)
                 else:
-                    print("cannot set extremes of bin on axis %s!"%(axes))
+                    print("Usrbin.setExtremes(): cannot set extremes of bin on axis %s!"%(axes))
                     exit(1)
         else:
-            print("mixed arrays!")
+            print("Usrbin.setExtremes(): mixed arrays!")
+            exit(1)
+
+    def move(self,myCoord,axes=3,lAbs=True,lFree=False):
+        if ((isinstance(myCoord,list) or isinstance(myCoord,np.ndarray)) and isinstance(axes,list)):
+            if (len(myCoord)!=len(axes)):
+                print("Usrbin.move(): cannot set absPos=",myCoord,"axes",axes)
+                exit(1)
+            for tCoord,tAx in zip(myCoord,axes):
+                if (tCoord!=0.0): self.move(tCoord,axes=tAx,lFree=lFree)
+        elif (not isinstance(myCoord,list) and not isinstance(myCoord,np.ndarray) and not isinstance(axes,list)):
+            currMin,currMax=self.getExtremes(axes=axes)
+            currDelta=currMax-currMin
+            # a shift
+            newMin=currMin+myCoord
+            newMax=currMax+myCoord
+            if (lAbs):
+                # actually an absolute position
+                currMean=(currMax+currMin)*0.5
+                newMin=newMin-currMean; newMax=newMax-currMean
+            self.setExtremes(newMin,newMax,axes=axes,lFree=lFree)
+        else:
+            print("Usrbin.move(): mixed arrays!")
             exit(1)
 
     def resize(self,newL,axis=3):
         if (axis!=3):
-            print("For the time being, it is possible to re-size USRBINs only along the Z-axis!")
+            print("Usrbin.resize(): For the time being, it is possible to re-size USRBINs only along the Z-axis!")
             exit(1)
         currMin,currMax=self.getExtremes(axes=axis); currNbins=self.getNbins(axes=axis)
         currDelta=currMax-currMin; currStep=currDelta*1.0/currNbins
