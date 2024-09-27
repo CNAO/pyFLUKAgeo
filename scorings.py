@@ -30,9 +30,10 @@ class Usrbin(GeoObject):
     def echo(self):
         '''take into account comment'''
         tmpBuf=GeoObject.echoComm(self)
-        if (len(self.TransfName)>0):
-            tmpBuf=tmpBuf+"%-10s%10s%10s%10s%10s\n"\
-                %("ROTPRBIN","",self.TransfName,"",self.echoName())
+        if (self.TransfName is not None):
+            if (len(self.TransfName)>0):
+                tmpBuf=tmpBuf+"%-10s%10s%10s%10s%10s\n"\
+                    %("ROTPRBIN","",self.TransfName,"",self.echoName())
         for myDef,mySdum,myEoL in zip(self.definition,[self.echoName(),"&"],["\n",""]):
             tmpBuf=tmpBuf+"%-10s%60s%-10s%-s"%("USRBIN",myDef,mySdum,myEoL)
         return tmpBuf
