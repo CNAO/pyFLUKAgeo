@@ -15,8 +15,9 @@ class Scoring(GeoObject):
     - always 2 cards to fully define scoring;
     - NO comments between scoring cards defining the same scoring detector;
     - manipulation of unit;
+    - support for AUXSCORE cards: only one AUXSCORE card per detector!
     '''
-    def __init__(self,myName="",myComment="",scoType=None):
+    def __init__(self,myName="",myComment="",scoType=""):
         GeoObject.__init__(self,myName=myName,myComment=myComment)
         self.definition=[] # array of strings storing the lines defining the scoring
         self.auxScoDef=""
@@ -33,7 +34,8 @@ class Scoring(GeoObject):
         tmpBuf=""
         if (what.upper().startswith("ALL") or what.upper().startswith("AUX")):
             if (self.hasAuxScoCard()):
-                tmpBuf=tmpBuf+"%-10s%60s%-10s"%("AUXSCORE",self.auxScoDef,self.auxScoSDUM)
+                tmpBuf=tmpBuf+"%-10s%10s%20s%10s%20s%-10s"%(\
+                       "AUXSCORE",self.scoType,self.auxScoDef,self.echoName(),self.auxScoSDUM)
         if (what.upper().startswith("ALL") or what.upper().startswith("SCO")):
             if (len(tmpBuf)>0): tmpBuf=tmpBuf+"\n"
             for myDef,mySdum,myEoL in zip(self.definition,[self.echoName(),"&"],["\n",""]):
@@ -47,6 +49,9 @@ class Scoring(GeoObject):
             myLine=myLine.strip()
             if (myLine.startswith("*")):
                 newScoDet.tailMe(myLine)
+            elif (myLine.startswith("AUXSCORE")):
+                newScoDet.auxScoDef=myLine[20:40]
+                newScoDet.auxScoSDUM=myLine[70:].strip()
             else:
                 newScoDet.definition.append(myLine[10:70])
                 if (len(newScoDet.definition)==1):
