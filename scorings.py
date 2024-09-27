@@ -5,65 +5,61 @@
 from FLUKA import GeoObject, echoFloats
 import numpy as np
 
-class Usrbin(GeoObject):
+class Scoring(GeoObject):
     '''
-    A very basic class for handling USRBIN cards.
+    A very basic class for handling scoring cards.
     For the time being, there is support only for:
     - the scoring is not really interpreted: the FLUKA definition is kept in
       memory, and manipulations are performed on-the-fly;
     - parsing/echoing, ALWAYS in FIXED format;
     - always 2 cards to fully define scoring;
-    - a single ROTPRBIN card per transformation (1:1 mapping between ROTPRBIN and
-      USRBIN cards); the mapping to the transformation is ALWAYS name-based;
-      the ROTPRBIN card always PRECEEDs the respective USRBIN card;
-    - NO comments between USRBIN cards defining the same scoring detector;
-    - manipulation of unit, extremes and numbers of bins; nevertheless,
-      NO check is performed between the requested axis for manipulation and
-      the type of mesh;
+    - NO comments between scoring cards defining the same scoring detector;
+    - manipulation of unit;
     '''
-    def __init__(self,myName="",myComment=""):
+    def __init__(self,myName="",myComment="",scoType=None):
         GeoObject.__init__(self,myName=myName,myComment=myComment)
-        self.definition=[] # array of strings storing the lines defining the
-                           #   USRBIN. NB: USRBIN tags, & char and bin name
-                           #   are NOT stored.
-        self.TransfName=None
+        self.definition=[] # array of strings storing the lines defining the scoring
+        self.auxScoDef=""
+        self.auxScoSDUM=""
+        self.scoType=scoType
 
-    def echo(self):
-        '''take into account comment'''
-        tmpBuf=GeoObject.echoComm(self)
-        if (self.TransfName is not None):
-            if (len(self.TransfName)>0):
-                tmpBuf=tmpBuf+"%-10s%10s%10s%10s%10s\n"\
-                    %("ROTPRBIN","",self.TransfName,"",self.echoName())
-        for myDef,mySdum,myEoL in zip(self.definition,[self.echoName(),"&"],["\n",""]):
-            tmpBuf=tmpBuf+"%-10s%60s%-10s%-s"%("USRBIN",myDef,mySdum,myEoL)
+    def echo(self,what="all"):
+        '''
+        echo just the bare scoring cards and/or AUXSCORE card:
+        * what="ALL": all cards;
+        * what="AUX": only AUXSCORE card;
+        * what="SCO": only scoring cards;
+        '''
+        tmpBuf=""
+        if (what.upper().startswith("ALL") or what.upper().startswith("AUX")):
+            if (self.hasAuxScoCard()):
+                tmpBuf=tmpBuf+"%-10s%60s%-10s"%("AUXSCORE",self.auxScoDef,self.auxScoSDUM)
+        if (what.upper().startswith("ALL") or what.upper().startswith("SCO")):
+            if (len(tmpBuf)>0): tmpBuf=tmpBuf+"\n"
+            for myDef,mySdum,myEoL in zip(self.definition,[self.echoName(),"&"],["\n",""]):
+                tmpBuf=tmpBuf+"%-10s%60s%-10s%-s"%(self.scoType,myDef,mySdum,myEoL)
         return tmpBuf
-                        
+
     @staticmethod
-    def fromBuf(myBuffer):
-        newUsrBin=Usrbin()
+    def fromBuf(myBuffer,newScoDet=None):
+        if (newScoDet is None): newScoDet=Scoring()
         for myLine in myBuffer.split("\n"):
             myLine=myLine.strip()
             if (myLine.startswith("*")):
-                newUsrBin.tailMe(myLine)
-            elif (myLine.startswith("ROTPRBIN")):
-                newUsrBin.assignTransformName(myLine[20:30].strip())
-                if (len(newUsrBin.TransfName)==0):
-                    print("Usrbin.fromBuf(): something wrong when parsing USRBIN cards: no ROT-DEFI card name!")
-                    exit(1)
+                newScoDet.tailMe(myLine)
             else:
-                newUsrBin.definition.append(myLine[10:70])
-                if (len(newUsrBin.definition)==1):
+                newScoDet.definition.append(myLine[10:70])
+                if (len(newScoDet.definition)==1):
                     # from first line defining USRBIN, get USRBIN name
-                    newUsrBin.rename(myLine[70:].strip(),lNotify=False)
-        if (len(newUsrBin.definition)!=2):
-            print("Usrbin.fromBuf(): something wrong when parsing USRBIN cards: got %d lines!"\
-                  %(len(newUsrBin.definition)))
+                    newScoDet.rename(myLine[70:].strip(),lNotify=False)
+        if (len(newScoDet.definition)!=2):
+            print("Scoring.fromBuf(): something wrong when parsing USRBIN cards: got %d lines!"\
+                  %(len(newScoDet.definition)))
             exit(1)
-        if (len(newUsrBin.name)==0):
-            print("Usrbin.fromBuf(): something wrong when parsing USRBIN cards: no name!")
+        if (len(newScoDet.name)==0):
+            print("Scoring.fromBuf(): something wrong when parsing USRBIN cards: no name!")
             exit(1)
-        return newUsrBin
+        return newScoDet
 
     def getUnit(self):
         return float(self.definition[0][20:30])
@@ -74,6 +70,52 @@ class Usrbin(GeoObject):
         else:
             self.definition[0]=self.definition[0][ 0:20]+echoFloats( abs(myUnit),lFree=lFree)[0]+ \
                                self.definition[0][30:]
+
+    def hasAuxScoCard(self):
+        return len(self.auxScoDef)>0
+
+class Usrbin(Scoring):
+    '''
+    A very basic class for handling USRBIN cards.
+    In addition to Scoring class properties/methods, there is support only for:
+    - a single ROTPRBIN card per transformation (1:1 mapping between ROTPRBIN and
+      USRBIN cards); the mapping to the transformation is ALWAYS name-based;
+      the ROTPRBIN card always PRECEEDs the respective USRBIN card;
+    - manipulation of unit, extremes and numbers of bins;
+    '''
+    def __init__(self,myName="",myComment=""):
+        Scoring.__init__(self,myName=myName,myComment=myComment,scoType="USRBIN")
+        self.TransfName=None
+
+    def echo(self):
+        '''take into account comment'''
+        tmpBuf=GeoObject.echoComm(self)
+        auxBuf=Scoring.echo(self,what="aux")
+        if (len(auxBuf)>0): tmpBuf=tmpBuf+auxBuf+"\n"
+        if (self.isLinkedToTransform() and len(self.TransfName)>0):
+            tmpBuf=tmpBuf+"%-10s%10s%10s%10s%10s\n"\
+                    %("ROTPRBIN","",self.retTransformName(),"",self.echoName())
+        return tmpBuf+Scoring.echo(self,what="sco")
+                        
+    @staticmethod
+    def fromBuf(myBuffer):
+        newBuffer=""
+        RotPrBinBuff=""
+        # fill in buffers
+        for iLine,myLine in enumerate(myBuffer.split("\n")):
+            if (myLine.strip().startswith("ROTPRBIN")):
+                RotPrBinBuff=myLine.strip()
+            else:
+                if (iLine>0): newBuffer=newBuffer+"\n"
+                newBuffer=newBuffer+myLine
+        # parse buffers
+        newUsrBin=Scoring.fromBuf(newBuffer,newScoDet=Usrbin())
+        if (len(RotPrBinBuff)>0):
+            newUsrBin.assignTransformName(RotPrBinBuff[20:30].strip())
+            if (len(newUsrBin.TransfName)==0):
+                print("Usrbin.fromBuf(): something wrong when parsing USRBIN cards: no ROT-DEFI card name!")
+                exit(1)
+        return newUsrBin
 
     def getBinType(self):
         return int(abs(float(self.definition[0][0:10]))+1E-4)
