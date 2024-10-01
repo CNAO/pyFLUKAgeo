@@ -9,7 +9,7 @@ import grid
 from body import Body
 from region import Region
 from transformation import RotDefi, Transformation
-from scorings import Usrbin, Usryield
+from scorings import Usrbin, Usryield, Usrbdx
 from FLUKA import HighLightComment, CheckString
 
 class Geometry():
@@ -238,7 +238,17 @@ class Geometry():
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.scos):
-                    if (myEntry.echoName()==myValue):
+                    if (myEntry.echoName()==myValue and isinstance(myEntry,Usryield) ):
+                        lFound=True
+                        break
+        elif (myKey.upper().startswith("USRBDX")):
+            if (myValue.upper()=="ALL"):
+                myEntry=[ mySco.echoName() for mySco in self.scos if isinstance(mySco,Usrbdx) ]
+                iEntry=[ ii for ii in range(len(self.scos)) ]
+                lFound=True
+            else:
+                for iEntry,myEntry in enumerate(self.scos):
+                    if (myEntry.echoName()==myValue and isinstance(myEntry,Usrbdx) ):
                         lFound=True
                         break
         else:
@@ -319,6 +329,11 @@ class Geometry():
                     tmpBuf=tmpBuf+tmpLine
                     if(tmpLine.strip().endswith("&")):
                        newGeom.add(Usryield.fromBuf(tmpBuf.strip()),what="SCO")
+                       tmpBuf="" # flush buffer
+                elif (tmpLine.startswith("USRBDX")):
+                    tmpBuf=tmpBuf+tmpLine
+                    if(tmpLine.strip().endswith("&")):
+                       newGeom.add(Usrbdx.fromBuf(tmpBuf.strip()),what="SCO")
                        tmpBuf="" # flush buffer
                 elif (tmpLine.startswith("*")):
                     tmpBuf=tmpBuf+tmpLine
@@ -1542,10 +1557,10 @@ class Geometry():
         if (len(origScos)>0):
             print("duplicating scorings")
             allRegNames,iRegs=slicingGeo.ret("REG","ALL")
-            # USRYIELDs
+            # USRYIELDs and USRBDX
             for reg1name,reg2name in zip(allRegNames[0:-1],allRegNames[1:]):
                 for origSco in origScos:
-                    if (isinstance(origSco,Usryield)):
+                    if (isinstance(origSco,Usryield) or isinstance(origSco,Usrbdx)):
                         newSco=deepcopy(origSco)
                         newSco.setRegName(1,reg1name)
                         newSco.setRegName(2,reg2name)

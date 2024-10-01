@@ -317,16 +317,16 @@ class Usrbin(Scoring):
     def isLinkedToTransform(self):
         return self.retTransformName() is not None
     
-class Usryield(Scoring):
+class TwoRegBasedScoring(Scoring):
     '''
-    A very basic class for handling USRYIELD cards.
+    A very basic class for handling scoring cards with two regions.
     '''
-    def __init__(self,myName="",myComment=""):
-        Scoring.__init__(self,myName=myName,myComment=myComment,scoType="USRYIELD")
+    def __init__(self,myName="",myComment="",scoType=""):
+        Scoring.__init__(self,myName=myName,myComment=myComment,scoType=scoType)
 
     @staticmethod
-    def fromBuf(myBuffer):
-        return Scoring.fromBuf(myBuffer,newScoDet=Usryield())
+    def fromBuf(myBuffer,newScoDet):
+        return Scoring.fromBuf(myBuffer,newScoDet=newScoDet)
         
     def setRegName(self,whichReg,regName):
         if (whichReg==1 or whichReg==2):
@@ -347,3 +347,27 @@ class Usryield(Scoring):
             if (self.retRegName(iReg+1)==oldName):
                 self.setRegName(iReg+1,newName)
                 break
+
+class Usryield(TwoRegBasedScoring):
+    '''
+    A very basic class for handling USRYIELD cards.
+    '''
+    def __init__(self,myName="",myComment=""):
+        TwoRegBasedScoring.__init__(self,myName=myName,myComment=myComment,scoType="USRYIELD")
+
+    @staticmethod
+    def fromBuf(myBuffer):
+        return TwoRegBasedScoring.fromBuf(myBuffer,newScoDet=Usryield())
+        
+
+class Usrbdx(TwoRegBasedScoring):
+    '''
+    A very basic class for handling USRBDX cards.
+    '''
+    def __init__(self,myName="",myComment=""):
+        TwoRegBasedScoring.__init__(self,myName=myName,myComment=myComment,scoType="USRBDX")
+
+    @staticmethod
+    def fromBuf(myBuffer):
+        return TwoRegBasedScoring.fromBuf(myBuffer,newScoDet=Usrbdx())
+        
