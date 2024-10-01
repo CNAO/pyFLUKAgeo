@@ -319,7 +319,7 @@ class Usrbin(Scoring):
     
 class TwoRegBasedScoring(Scoring):
     '''
-    A very basic class for handling scoring cards with two regions.
+    A very basic class for handling region-based scoring cards with two regions.
     '''
     def __init__(self,myName="",myComment="",scoType=""):
         Scoring.__init__(self,myName=myName,myComment=myComment,scoType=scoType)
@@ -342,8 +342,8 @@ class TwoRegBasedScoring(Scoring):
         else:
             print("Usryield.retRegName(): which region do you choose?")
             exit(1)
-    def regNameReplaceInDef(self,oldName,newName):
-        for iReg in range(2):
+    def regNameReplaceInDef(self,oldName,newName,nRegs=2):
+        for iReg in range(nRegs):
             if (self.retRegName(iReg+1)==oldName):
                 self.setRegName(iReg+1,newName)
                 break
@@ -371,3 +371,39 @@ class Usrbdx(TwoRegBasedScoring):
     def fromBuf(myBuffer):
         return TwoRegBasedScoring.fromBuf(myBuffer,newScoDet=Usrbdx())
         
+class Usrtrack(TwoRegBasedScoring):
+    '''
+    A very basic class for handling USRTRACK cards.
+    '''
+    def __init__(self,myName="",myComment=""):
+        TwoRegBasedScoring.__init__(self,myName=myName,myComment=myComment,scoType="USRTRACK")
+
+    @staticmethod
+    def fromBuf(myBuffer):
+        return TwoRegBasedScoring.fromBuf(myBuffer,newScoDet=Usrtrack())
+        
+    def setRegName(self,regName):
+        TwoRegBasedScoring.setRegName(self,1,regName)
+    def retRegName(self):
+        return TwoRegBasedScoring.retRegName(self,1)
+    def regNameReplaceInDef(self,oldName,newName):
+        TwoRegBasedScoring.regNameReplaceInDef(self,oldName,newName,nRegs=1)
+
+class Usrcoll(TwoRegBasedScoring):
+    '''
+    A very basic class for handling USRCOLL cards.
+    '''
+    def __init__(self,myName="",myComment=""):
+        TwoRegBasedScoring.__init__(self,myName=myName,myComment=myComment,scoType="USRCOLL")
+
+    @staticmethod
+    def fromBuf(myBuffer):
+        return TwoRegBasedScoring.fromBuf(myBuffer,newScoDet=Usrcoll())
+        
+    def setRegName(self,regName):
+        TwoRegBasedScoring.setRegName(self,1,regName)
+    def retRegName(self):
+        return TwoRegBasedScoring.retRegName(self,1)
+    def regNameReplaceInDef(self,oldName,newName):
+        TwoRegBasedScoring.regNameReplaceInDef(self,oldName,newName,nRegs=1)
+
