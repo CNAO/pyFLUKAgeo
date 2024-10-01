@@ -329,6 +329,7 @@ class Geometry():
             
             # OUTSIDE GEOBEGIN-GEOEND
             if (iRead==0):
+                # geometry-related
                 if (tmpLine.startswith("GEOBEGIN")):
                     iRead=1
                 elif (tmpLine.startswith("ASSIGNMA")):
@@ -338,6 +339,9 @@ class Geometry():
                     tmpBuf=tmpBuf+tmpLine
                     newGeom.rotdefi(tmpBuf,lFree=lFree)
                     tmpBuf="" # flush buffer
+                # scoring-related
+                elif (tmpLine.startswith("AUXSCORE")):
+                    tmpBuf=tmpBuf+tmpLine
                 elif (tmpLine.startswith("ROTPRBIN")):
                     tmpBuf=tmpBuf+tmpLine
                 elif (tmpLine.startswith("USRBIN")):
@@ -365,12 +369,15 @@ class Geometry():
                     if(tmpLine.strip().endswith("&")):
                        newGeom.add(Usrcoll.fromBuf(tmpBuf.strip()),what="SCO")
                        tmpBuf="" # flush buffer
+                # comment line
                 elif (tmpLine.startswith("*")):
                     tmpBuf=tmpBuf+tmpLine
+                # format-related
                 elif (tmpLine.startswith("FREE")):
                     lFree=True
                 elif (tmpLine.startswith("FIXED")):
                     lFree=False
+                # other
                 else:
                     # another card, to be skipped
                     tmpBuf="" # flush buffer
@@ -836,9 +843,10 @@ class Geometry():
                     
         print("...done.")
 
-    def rename(self,newName,lNotify=True,maxLenName=8,nDigits=2,addChar="_"):
+    def rename(self,newName,lNotify=True,nDigits=2,addChar="_"):
         print("renaming geometry...")
-        nName,nNameFmt=TailNameInt(newName,maxLen=maxLenName,nDigits=nDigits,addChar=addChar)
+        nName,nNameFmt=TailNameInt(newName,nDigits=nDigits,addChar=addChar)
+        nNameSco,nNameScoFmt=TailNameInt(newName,maxLen=10,nDigits=nDigits+1,addChar=addChar)
         oldBodyNames=[]; newBodyNames=[]
         oldRegNames=[] ; newRegNames=[]
         oldTrasNames=[]; newTrasNames=[]
@@ -858,7 +866,7 @@ class Geometry():
             newTrasNames.append(nNameFmt%(iTras+1))
             myTras.rename(newTrasNames[-1],lNotify=lNotify)
         for iBin,myBin in enumerate(self.bins):
-            myBin.rename(nNameFmt%(iBin+1),lNotify=lNotify)
+            myBin.rename(nNameScoFmt%(iBin+1),lNotify=lNotify)
             if (myBin.isLinkedToTransform()):
                 trName=myBin.retTransformName()
                 lFound=False
@@ -874,7 +882,7 @@ class Geometry():
                 print("Geometry.rename(): USRBIN with no associated transformation!")
                 exit(1)
         for iSco,mySco in enumerate(self.scos):
-            mySco.rename(nNameFmt%(iSco+1),lNotify=lNotify)
+            mySco.rename(nNameScoFmt%(iSco+1),lNotify=lNotify)
             for oName,nName in zip(oldRegNames,newRegNames):
                 mySco.regNameReplaceInDef(oName,nName)
         for myBod in self.bods:
