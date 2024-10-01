@@ -51,8 +51,9 @@ class Body(GeoObject):
         elif (self.bType=="ZCC"):
             myFloats=list(self.P[0:-1])+[self.Rs[0]]
         elif (self.bType=="RPP"):
-            myFloats=list(self.P)+list(self.P+self.V)
-            myFloats[1::2]=myFloats[3:]
+            myFloats=[0.0 for ii in range(6)]
+            myFloats[::2]=list(self.P)
+            myFloats[1::2]=list(self.P+self.V)
         else:
             print("body %s NOT supported yet!"%(self.bType))
             exit(1)
