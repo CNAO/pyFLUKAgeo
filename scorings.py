@@ -27,17 +27,21 @@ class Scoring(GeoObject):
     def echo(self,what="all"):
         '''
         echo just the bare scoring cards and/or AUXSCORE card:
-        * what="ALL": all cards;
+        * what="ALL": everything;
         * what="AUX": only AUXSCORE card;
+        * what="COM": only comments;
         * what="SCO": only scoring cards;
         '''
         tmpBuf=""
+        if (what.upper().startswith("ALL") or what.upper().startswith("COM")):
+            tmpBuf=GeoObject.echoComm(self)
         if (what.upper().startswith("ALL") or what.upper().startswith("AUX")):
             if (self.hasAuxScoCard()):
                 tmpBuf=tmpBuf+"%-10s%10s%20s%10s%20s%-10s"%(\
                        "AUXSCORE",self.scoType,self.auxScoDef,self.echoName(),self.auxScoSDUM)
         if (what.upper().startswith("ALL") or what.upper().startswith("SCO")):
-            if (len(tmpBuf)>0): tmpBuf=tmpBuf+"\n"
+            if (what.upper().startswith("ALL") and self.hasAuxScoCard()):
+                tmpBuf=tmpBuf+"\n"
             for myDef,mySdum,myEoL in zip(self.definition,[self.echoName(),"&"],["\n",""]):
                 tmpBuf=tmpBuf+"%-10s%60s%-10s%-s"%(self.scoType,myDef,mySdum,myEoL)
         return tmpBuf
@@ -86,7 +90,7 @@ class Usrbin(Scoring):
     - a single ROTPRBIN card per transformation (1:1 mapping between ROTPRBIN and
       USRBIN cards); the mapping to the transformation is ALWAYS name-based;
       the ROTPRBIN card always PRECEEDs the respective USRBIN card;
-    - manipulation of unit, extremes and numbers of bins;
+    - manipulation of extremes and number of bins;
     '''
     def __init__(self,myName="",myComment=""):
         Scoring.__init__(self,myName=myName,myComment=myComment,scoType="USRBIN")
@@ -94,7 +98,7 @@ class Usrbin(Scoring):
 
     def echo(self):
         '''take into account comment'''
-        tmpBuf=GeoObject.echoComm(self)
+        tmpBuf=Scoring.echo(self,what="com")
         auxBuf=Scoring.echo(self,what="aux")
         if (len(auxBuf)>0): tmpBuf=tmpBuf+auxBuf+"\n"
         if (self.isLinkedToTransform() and len(self.TransfName)>0):
@@ -313,3 +317,93 @@ class Usrbin(Scoring):
     def isLinkedToTransform(self):
         return self.retTransformName() is not None
     
+class TwoRegBasedScoring(Scoring):
+    '''
+    A very basic class for handling region-based scoring cards with two regions.
+    '''
+    def __init__(self,myName="",myComment="",scoType=""):
+        Scoring.__init__(self,myName=myName,myComment=myComment,scoType=scoType)
+
+    @staticmethod
+    def fromBuf(myBuffer,newScoDet):
+        return Scoring.fromBuf(myBuffer,newScoDet=newScoDet)
+        
+    def setRegName(self,whichReg,regName):
+        if (whichReg==1 or whichReg==2):
+            self.definition[0]=self.definition[0][:30+10*(whichReg-1)]+\
+                               "%10s"%(regName.strip())+\
+                               self.definition[0][40+10*(whichReg-1):]
+        else:
+            print("Usryield.setRegName(): which region do you choose?")
+            exit(1)
+    def retRegName(self,whichReg):
+        if (whichReg==1 or whichReg==2):
+            return self.definition[0][30+10*(whichReg-1):40+10*(whichReg-1)].strip()
+        else:
+            print("Usryield.retRegName(): which region do you choose?")
+            exit(1)
+    def regNameReplaceInDef(self,oldName,newName,nRegs=2):
+        for iReg in range(nRegs):
+            if (self.retRegName(iReg+1)==oldName):
+                self.setRegName(iReg+1,newName)
+                break
+
+class Usryield(TwoRegBasedScoring):
+    '''
+    A very basic class for handling USRYIELD cards.
+    '''
+    def __init__(self,myName="",myComment=""):
+        TwoRegBasedScoring.__init__(self,myName=myName,myComment=myComment,scoType="USRYIELD")
+
+    @staticmethod
+    def fromBuf(myBuffer):
+        return TwoRegBasedScoring.fromBuf(myBuffer,newScoDet=Usryield())
+        
+
+class Usrbdx(TwoRegBasedScoring):
+    '''
+    A very basic class for handling USRBDX cards.
+    '''
+    def __init__(self,myName="",myComment=""):
+        TwoRegBasedScoring.__init__(self,myName=myName,myComment=myComment,scoType="USRBDX")
+
+    @staticmethod
+    def fromBuf(myBuffer):
+        return TwoRegBasedScoring.fromBuf(myBuffer,newScoDet=Usrbdx())
+        
+class Usrtrack(TwoRegBasedScoring):
+    '''
+    A very basic class for handling USRTRACK cards.
+    '''
+    def __init__(self,myName="",myComment=""):
+        TwoRegBasedScoring.__init__(self,myName=myName,myComment=myComment,scoType="USRTRACK")
+
+    @staticmethod
+    def fromBuf(myBuffer):
+        return TwoRegBasedScoring.fromBuf(myBuffer,newScoDet=Usrtrack())
+        
+    def setRegName(self,regName):
+        TwoRegBasedScoring.setRegName(self,1,regName)
+    def retRegName(self):
+        return TwoRegBasedScoring.retRegName(self,1)
+    def regNameReplaceInDef(self,oldName,newName):
+        TwoRegBasedScoring.regNameReplaceInDef(self,oldName,newName,nRegs=1)
+
+class Usrcoll(TwoRegBasedScoring):
+    '''
+    A very basic class for handling USRCOLL cards.
+    '''
+    def __init__(self,myName="",myComment=""):
+        TwoRegBasedScoring.__init__(self,myName=myName,myComment=myComment,scoType="USRCOLL")
+
+    @staticmethod
+    def fromBuf(myBuffer):
+        return TwoRegBasedScoring.fromBuf(myBuffer,newScoDet=Usrcoll())
+        
+    def setRegName(self,regName):
+        TwoRegBasedScoring.setRegName(self,1,regName)
+    def retRegName(self):
+        return TwoRegBasedScoring.retRegName(self,1)
+    def regNameReplaceInDef(self,oldName,newName):
+        TwoRegBasedScoring.regNameReplaceInDef(self,oldName,newName,nRegs=1)
+

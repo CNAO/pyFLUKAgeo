@@ -153,3 +153,18 @@ def HighLightComment(myString,begLine=None,endLine=None):
     if (begLine is None): begLine=begLineGLOB
     if (endLine is None): endLine=endLineGLOB
     return begLine+"\n* "+myString+" \n"+endLine
+
+def CheckString(myString,maxLen=8,nDigits=2,addChar="_",lDebug=True):
+    if (nDigits is None or nDigits<0): nDigits=0
+    nNameFmt=None
+    if (len(myString)>maxLen-nDigits):
+        newName=myString[0:maxLen-nDigits]
+        if (lDebug): print("...chopping name %s to len(%s)==%d"%(myString,newName,len(newName)))
+    elif (len(myString)<maxLen-nDigits):
+        newName=myString+addChar*(maxLen-nDigits-len(newName))
+        if (lDebug): print("...chopping name %s to len(%s)==%d"%(myString,newName,len(newName)))
+    else:
+        newName=myString
+    if (nDigits>0):
+        newNameFmt=newName+"%0"+"%d"%(maxLen-len(newName))+"d"
+    return newName, newNameFmt
