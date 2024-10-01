@@ -7,6 +7,7 @@ MaxLineLength=132
 LineHeader="%13s"%("")
 begLineGLOB="* \n"+"* "+"="*(MaxLineLength-2)
 endLineGLOB="* "+"-"*(MaxLineLength-2)+"\n* "
+maxGeoNameLen=8
 # FREE format:
 cut0sFREE="0"*4
 expDigitsFREE=22
@@ -154,17 +155,32 @@ def HighLightComment(myString,begLine=None,endLine=None):
     if (endLine is None): endLine=endLineGLOB
     return begLine+"\n* "+myString+" \n"+endLine
 
-def CheckString(myString,maxLen=8,nDigits=2,addChar="_",lDebug=True):
+def TailNameInt(myString,maxLen=maxGeoNameLen,nDigits=2,addChar="_",lDebug=True):
     if (nDigits is None or nDigits<0): nDigits=0
     nNameFmt=None
     if (len(myString)>maxLen-nDigits):
         newName=myString[0:maxLen-nDigits]
-        if (lDebug): print("...chopping name %s to len(%s)==%d"%(myString,newName,len(newName)))
+        if (lDebug): print("TailNameInt(): chopping name %s to len(%s)==%d"%(myString,newName,len(newName)))
     elif (len(myString)<maxLen-nDigits):
         newName=myString+addChar*(maxLen-nDigits-len(newName))
-        if (lDebug): print("...chopping name %s to len(%s)==%d"%(myString,newName,len(newName)))
+        if (lDebug): print("TailNameInt(): extending name %s to len(%s)==%d"%(myString,newName,len(newName)))
     else:
         newName=myString
     if (nDigits>0):
         newNameFmt=newName+"%0"+"%d"%(maxLen-len(newName))+"d"
     return newName, newNameFmt
+
+def AddNameStr(myString,maxLen=maxGeoNameLen,addStr="",addChar="_",lTail=True,lDebug=True):
+    addStrLen=len(addStr)
+    if (len(myString)>maxLen-addStrLen):
+        suffix=myString[0:maxLen-addStrLen]; myAddStr=""
+        if (lDebug): print("AddNameStr(): chopping name %s to len(%s)==%d"%(myString,suffix,len(suffix)))
+    elif (len(myString)<maxLen-addStrLen):
+        suffix=myString; myAddStr=addChar*(maxLen-addStrLen-len(suffix))
+        if (lDebug): print("AddNameStr(): extending name %s with len(%s)==%d"%(myString,myAddStr,len(myAddStr)))
+    else:
+        suffix=myString
+    if (lTail):
+        return suffix+myAddStr+addStr
+    else:
+        return addStr+myAddStr+suffix

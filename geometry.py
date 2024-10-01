@@ -10,7 +10,7 @@ from body import Body
 from region import Region
 from transformation import RotDefi, Transformation
 from scorings import Usrbin, Usryield, Usrbdx, Usrtrack, Usrcoll
-from FLUKA import HighLightComment, CheckString
+from FLUKA import HighLightComment, TailNameInt
 
 class Geometry():
     '''
@@ -838,7 +838,7 @@ class Geometry():
 
     def rename(self,newName,lNotify=True,maxLenName=8,nDigits=2,addChar="_"):
         print("renaming geometry...")
-        nName,nNameFmt=CheckString(newName,maxLen=maxLenName,nDigits=nDigits,addChar=addChar)
+        nName,nNameFmt=TailNameInt(newName,maxLen=maxLenName,nDigits=nDigits,addChar=addChar)
         oldBodyNames=[]; newBodyNames=[]
         oldRegNames=[] ; newRegNames=[]
         oldTrasNames=[]; newTrasNames=[]
@@ -1417,11 +1417,14 @@ class Geometry():
             #   merge each containing hive region into the concerned
             #   grid regions, and then remove the hive region
             # - merge defs
+            lFirst=True
             for iRhg,jRhg,iRgg,jRgg in zip(mapping["iRhg"],mapping["jRhg"],mapping["iRgg"],mapping["jRgg"]):
-                gridGeo[jRgg].regs[iRgg].merge(hiveGeo[jRhg].regs[iRhg])
+                # copy comment of hive region only in the first instance of the grid
+                gridGeo[jRgg].regs[iRgg].merge(hiveGeo[jRhg].regs[iRhg],lCopyComment=lFirst)
                 if (hiveGeo[jRhg].regs[iRhg].echoName() not in removeRegs):
                     removeRegs.append(hiveGeo[jRhg].regs[iRhg].echoName())
                     jRemoveRegs.append(jRhg)
+                if (lFirst): lFirst=False
             # - remove merged regs
             for removeReg,jRemoveReg in zip(removeRegs,jRemoveRegs):
                 myReg,iReg=hiveGeo[jRemoveReg].ret("REG",removeReg)
@@ -1587,20 +1590,31 @@ class Geometry():
         if (len(origScos)>0):
             print("duplicating scorings")
             allRegNames,iRegs=slicingGeo.ret("REG","ALL")
+            allBodNames,iBods=slicingGeo.ret("BOD","ALL")
             # 2-reg based scoring cards:
-            for reg1name,reg2name in zip(allRegNames[0:-1],allRegNames[1:]):
+            for reg1name,reg2name,myBodName in zip(allRegNames[0:-1],allRegNames[1:],allBodNames):
+                myBod,iBod=slicingGeo.ret("BOD",myBodName)
+                lFirst=True
                 for origSco in origScos:
                     if (isinstance(origSco,Usryield) or isinstance(origSco,Usrbdx)):
                         newSco=deepcopy(origSco)
                         newSco.setRegName(1,reg1name)
                         newSco.setRegName(2,reg2name)
+                        if (lFirst):
+                            newSco.tailMe(myBod.echoComm().strip())
+                            lFirst=False
                         slicingGeo.add(newSco,"SCO")
             # 1-reg based scoring cards:
-            for regName in allRegNames:
+            for tRegName in allRegNames:
+                myReg,iReg=slicingGeo.ret("Reg",tRegName)
+                lFirst=True
                 for origSco in origScos:
                     if (isinstance(origSco,Usrcoll) or isinstance(origSco,Usrtrack)):
                         newSco=deepcopy(origSco)
-                        newSco.setRegName(regName)
+                        newSco.setRegName(tRegName)
+                        if (lFirst):
+                            newSco.tailMe(myReg.echoComm().strip())
+                            lFirst=False
                         slicingGeo.add(newSco,"SCO")
         # - rename geometry entities
         slicingGeo.rename(regName)
