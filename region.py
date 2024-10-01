@@ -155,11 +155,11 @@ class Region(GeoObject):
             exit(1)
         return bodiesInDef
 
-    def merge(self,newReg,spacing=" "*16):
+    def merge(self,newReg,lCopyComment=True,spacing=" "*16):
         # warn user in comment
         self.tailMe("* --> merged with region %s <--"%(newReg.echoName()))
         # merge comments
-        if (len(newReg.comment)>0):
+        if (lCopyComment and len(newReg.comment)>0):
             self.tailMe(newReg.comment)
         # merge definitions
         mergedDef=""

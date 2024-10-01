@@ -37,8 +37,8 @@ class Scoring(GeoObject):
             tmpBuf=GeoObject.echoComm(self)
         if (what.upper().startswith("ALL") or what.upper().startswith("AUX")):
             if (self.hasAuxScoCard()):
-                tmpBuf=tmpBuf+"%-10s%10s%20s%10s%20s%-10s"%(\
-                       "AUXSCORE",self.scoType,self.auxScoDef,self.echoName(),self.auxScoSDUM)
+                tmpBuf=tmpBuf+"%-10s%10s%10s%10s%10s%20s%-10s"%(\
+                       "AUXSCORE",self.scoType,self.auxScoDef,"",self.echoName(),"",self.auxScoSDUM)
         if (what.upper().startswith("ALL") or what.upper().startswith("SCO")):
             if (what.upper().startswith("ALL") and self.hasAuxScoCard()):
                 tmpBuf=tmpBuf+"\n"
@@ -54,7 +54,7 @@ class Scoring(GeoObject):
             if (myLine.startswith("*")):
                 newScoDet.tailMe(myLine)
             elif (myLine.startswith("AUXSCORE")):
-                newScoDet.auxScoDef=myLine[20:40]
+                newScoDet.auxScoDef=myLine[20:30]
                 newScoDet.auxScoSDUM=myLine[70:].strip()
             else:
                 newScoDet.definition.append(myLine[10:70])
