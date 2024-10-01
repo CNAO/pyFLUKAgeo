@@ -9,8 +9,8 @@ import grid
 from body import Body
 from region import Region
 from transformation import RotDefi, Transformation
-from scorings import Usrbin
-from FLUKA import HighLightComment
+from scorings import Usrbin, Usryield
+from FLUKA import HighLightComment, CheckString
 
 class Geometry():
     '''
@@ -34,7 +34,8 @@ class Geometry():
         self.bods=[]
         self.regs=[]
         self.tras=[]
-        self.bins=[]
+        self.bins=[] # USRBINs
+        self.scos=[] # other scoring cards (reg-based)
         self.title=""
 
     def add(self,tmpEl,what="body"):
@@ -49,6 +50,8 @@ class Geometry():
             self.tras.append(tmpEl)
         elif (what.upper().startswith("BIN") or what.upper().startswith("USRBIN")):
             self.bins.append(tmpEl)
+        elif (what.upper().startswith("SCO") or what.upper().startswith("SCORING")):
+            self.scos.append(tmpEl)
         else:
             print("...what do you want to add to geometry? %s NOT recognised!"%(what))
             exit(1)
@@ -218,6 +221,26 @@ class Geometry():
                     if (myEntry.echoName()==myValue):
                         lFound=True
                         break
+        elif (myKey.upper().startswith("SCO") or myKey.upper().startswith("SCORING")):
+            if (myValue.upper()=="ALL"):
+                myEntry=[ mySco.echoName() for mySco in self.scos ]
+                iEntry=[ ii for ii in range(len(self.scos)) ]
+                lFound=True
+            else:
+                for iEntry,myEntry in enumerate(self.scos):
+                    if (myEntry.echoName()==myValue):
+                        lFound=True
+                        break
+        elif (myKey.upper().startswith("USRYIELD")):
+            if (myValue.upper()=="ALL"):
+                myEntry=[ mySco.echoName() for mySco in self.scos if isinstance(mySco,Usryield) ]
+                iEntry=[ ii for ii in range(len(self.scos)) ]
+                lFound=True
+            else:
+                for iEntry,myEntry in enumerate(self.scos):
+                    if (myEntry.echoName()==myValue):
+                        lFound=True
+                        break
         else:
             print("%s not recognised! What should I look for in the geometry?"%(myKey))
             exit(1)
@@ -237,6 +260,7 @@ class Geometry():
         nRegs=len(newGeom.regs)
         nBins=len(newGeom.bins)
         nTras=len(newGeom.tras)
+        nScos=len(newGeom.scos)
         defineFlags=[]
         print("parsing file %s ..."%(myInpName))
         ff=open(myInpName,'r')
@@ -290,6 +314,11 @@ class Geometry():
                     tmpBuf=tmpBuf+tmpLine
                     if(tmpLine.strip().endswith("&")):
                        newGeom.add(Usrbin.fromBuf(tmpBuf.strip()),what="BIN")
+                       tmpBuf="" # flush buffer
+                elif (tmpLine.startswith("USRYIELD")):
+                    tmpBuf=tmpBuf+tmpLine
+                    if(tmpLine.strip().endswith("&")):
+                       newGeom.add(Usryield.fromBuf(tmpBuf.strip()),what="SCO")
                        tmpBuf="" # flush buffer
                 elif (tmpLine.startswith("*")):
                     tmpBuf=tmpBuf+tmpLine
@@ -361,6 +390,8 @@ class Geometry():
             print("...acquired %d regions;"%(len(newGeom.regs)-nRegs))
         if (len(newGeom.bins)-nBins>0):
             print("...acquired %d USRBIN(s);"%(len(newGeom.bins)-nBins))
+        if (len(newGeom.scos)-nScos>0):
+            print("...acquired %d region-based scoring(s);"%(len(newGeom.scos)-nScos))
         if (len(newGeom.tras)-nTras>0):
             print("...acquired %d transformation(s);"%(len(newGeom.tras)-nTras))
         print("...done;")
@@ -379,6 +410,7 @@ class Geometry():
                 myTras.ID=ii+len(new.tras)
             new.tras=new.tras+myGeo.tras
             new.bins=new.bins+myGeo.bins
+            new.scos=new.scos+myGeo.scos
         if (myTitle is None):
             myTitle="appended geometries"
         new.title=myTitle
@@ -386,7 +418,7 @@ class Geometry():
 
     def echo(self,oFileName,lSplit=False,what="all",dMode="w"):
         '''
-        - what="all"/"bodies"/"regions"/"materials"/"transformation"/"bins"
+        - what="all"/"bodies"/"regions"/"materials"/"transformation"/"bins"/"scos"
         In case oFileName ends with ".geo", lSplit is activated,
            overriding the user request, and bodies/regions are
            dumped in the .geo file, whereas assignmat cards are
@@ -458,6 +490,15 @@ class Geometry():
             ff.write("* \n")
             ff.close()
             print("...done;")
+        elif (what.upper().startswith("SCO")):
+            print("saving region-based scorings in file %s ..."%(oFileName))
+            ff=open(oFileName,dMode)
+            ff.write("* \n")
+            for tmpSco in self.scos:
+                ff.write("%s\n"%(tmpSco.echo()))
+            ff.write("* \n")
+            ff.close()
+            print("...done;")
         elif (what.upper()=="ALL"):
             if (lSplit):
                 if (oFileName.endswith(".inp")):
@@ -476,8 +517,13 @@ class Geometry():
                         self.echo(oFileName.replace(".inp","_rotdefis.inp",1),\
                               lSplit=False,what="transf",dMode="w")
                     if (len(self.bins)>0):
-                        self.echo(oFileName.replace(".inp","_usrbins.inp",1),\
+                        self.echo(oFileName.replace(".inp","_scorings.inp",1),\
                               lSplit=False,what="bin",dMode="w")
+                    if (len(self.scos)>0):
+                        dMode="w"
+                        if (len(self.bins)>0): dMode="a"
+                        self.echo(oFileName.replace(".inp","_scorings.inp",1),\
+                              lSplit=False,what="sco",dMode=dMode)
                 else:
                     # split geometry definition into a .geo file
                     #   and an assignmat, rotdefi and usrbin files;
@@ -501,8 +547,13 @@ class Geometry():
                         self.echo(oFileName.replace(".geo","_rotdefis.inp",1),\
                               lSplit=False,what="transf",dMode="w")
                     if (len(self.bins)>0):
-                        self.echo(oFileName.replace(".geo","_usrbins.inp",1),\
+                        self.echo(oFileName.replace(".geo","_scorings.inp",1),\
                               lSplit=False,what="bin",dMode="w")
+                    if (len(self.scos)>0):
+                        dMode="w"
+                        if (len(self.bins)>0): dMode="a"
+                        self.echo(oFileName.replace(".geo","_scorings.inp",1),\
+                              lSplit=False,what="sco",dMode=dMode)
             else:
                 ff=open(oFileName,"w")
                 ff.write("%-10s%60s%-10s\n"%("GEOBEGIN","","COMBNAME"))
@@ -525,6 +576,8 @@ class Geometry():
                 self.echo(oFileName,lSplit=False,what="materials",dMode="a")
                 if (len(self.bins)>0):
                     self.echo(oFileName,lSplit=False,what="bin",dMode="a")
+                if (len(self.scos)>0):
+                    self.echo(oFileName,lSplit=False,what="sco",dMode="a")
         else:
             print("...what should I echo? %s NOT reconised!"%(what))
 
@@ -536,6 +589,7 @@ class Geometry():
         myTras=deepcopy(myGeo.tras)
         if (lTrigScoring):
             new.bins=deepcopy(myGeo.bins)
+            new.scos=deepcopy(myGeo.scos)
         else:
             # do not copy USRBINs and remove uselss transformations
             allTrasfNames,iEntry=myGeo.ret("TRANSF","ALL")
@@ -563,6 +617,7 @@ class Geometry():
         myTras=deepcopy(myGeo.tras)
         if (lTrigScoring):
             new.bins=deepcopy(myGeo.bins)
+            new.scos=deepcopy(myGeo.scos)
         else:
             # do not copy USRBINs and remove uselss transformations
             allTrasfNames,iEntry=myGeo.ret("TRANSF","ALL")
@@ -736,26 +791,22 @@ class Geometry():
                     
         print("...done.")
 
-    def rename(self,newName,lNotify=True,nDigits=2):
+    def rename(self,newName,lNotify=True,maxLenName=8,nDigits=2,addChar="_"):
         print("renaming geometry...")
-        maxLenName=8
-        if (len(newName)>=maxLenName):
-            print("Geometry.rename(): cannot rename entities with len(%s)>=%d!"%(newName,maxLenName))
-            nName=newName[0:maxLenName-nDigits]
-            print("...chopping new name to len(%s)>=%d"%(nName,len(nName)))
-        else:
-            nName=newName
-        nNameFmt=nName+"%0"+"%d"%(maxLenName-len(nName))+"d"
+        nName,nNameFmt=CheckString(newName,maxLen=maxLenName,nDigits=nDigits,addChar=addChar)
         oldBodyNames=[]; newBodyNames=[]
+        oldRegNames=[] ; newRegNames=[]
         oldTrasNames=[]; newTrasNames=[]
         for iBody,myBod in enumerate(self.bods):
             oldBodyNames.append(myBod.echoName())
             newBodyNames.append(nNameFmt%(iBody+1))
             myBod.rename(newBodyNames[-1],lNotify=lNotify)
         for iReg,myReg in enumerate(self.regs):
-            myReg.rename(nNameFmt%(iReg+1),lNotify=lNotify)
+            oldRegNames.append(myReg.echoName())
+            newRegNames.append(nNameFmt%(iReg+1))
+            myReg.rename(newRegNames[-1],lNotify=lNotify)
             if (myReg.isLattice()):
-                myReg.assignLat(myLatName=nNameFmt%(iReg+1))
+                myReg.assignLat(myLatName=newRegNames[-1])
             myReg.BodyNameReplaceInDef(oldBodyNames,newBodyNames)
         for iTras,myTras in enumerate(self.tras):
             oldTrasNames.append(myTras.echoName())
@@ -775,8 +826,12 @@ class Geometry():
                     print("cannot find transformation named %s!"%(trName))
                     exit(1)
             else:
-                print("Geometry.rename(): USRBIN with no original name in geometry!")
+                print("Geometry.rename(): USRBIN with no associated transformation!")
                 exit(1)
+        for iSco,mySco in enumerate(self.scos):
+            mySco.rename(nNameFmt%(iSco+1),lNotify=lNotify)
+            for oName,nName in zip(oldRegNames,newRegNames):
+                mySco.regNameReplaceInDef(oName,nName)
         for myBod in self.bods:
             if (myBod.isLinkedToTransform()):
                 if (myBod.retTransformName() not in oldTrasNames):
@@ -1431,14 +1486,14 @@ class Geometry():
         print('...generated %d bodies and %d regions;'%(len(newGeom.bods),len(newGeom.regs)))
         return newGeom
 
-    def SliceGeo(self,regName,zLocs,bodName=None,RegBasedScors=[],lDebug=True):
+    def SliceGeo(self,regName,zLocs,bodName=None,RegBasedScorNames=[],lDebug=True):
         '''
         Method for slicing an existing geometry:
         - regName: name of region to be sliced;
         - zLocs: longitudinal positions [cm] at which the region should be sliced;
         - bodName: name of body from which starting point and direction of
                    slicing should be taken;
-        - RegBasedScors: names of region-based scorings that should be replicated
+        - RegBasedScorNames: names of region-based scorings that should be replicated
                     following slicing;
 
         NB: the method applies to any region which is encapsulated in an RPP or an RCC
@@ -1465,8 +1520,38 @@ class Geometry():
             print("...orientation:       [%g,%g,%g];"%(VV[0],VV[1],VV[2]))
         # - build slicing geo and flag it for merging
         slicingGeo=Geometry.CreateSlicingGeo(zLocs,P0=P0,VV=VV,defMat=reg2Bsliced.material)
+        # - take care of reg-based scorings
+        origScos=[]
+        if (isinstance(RegBasedScorNames,str)):
+            if (RegBasedScorNames.upper()=="ALL"):
+                origScos=deepcopy(self.scos)
+                self.scos=[]
+            else:
+                sco2duplicate,iSco=self.ret("sco",RegBasedScorNames)
+                if (sco2duplicate is None):
+                    print("   ...reg-based scoring %s NOT found!"%(regBasedScorNames))
+                    exit(1)
+                origScos.append(self.scos.pop(iSco))
+        else:
+            for regBasedScorName in RegBasedScorNames:
+                sco2duplicate,iSco=self.ret("sco",regBasedScorName)
+                if (sco2duplicate is None):
+                    print("   ...reg-based scorings %s NOT found!"%(regBasedScorName))
+                    exit(1)
+                origScos.append(self.scos.pop(iSco))
+        if (len(origScos)>0):
+            print("duplicating scorings")
+            allRegNames,iRegs=slicingGeo.ret("REG","ALL")
+            # USRYIELDs
+            for reg1name,reg2name in zip(allRegNames[0:-1],allRegNames[1:]):
+                for origSco in origScos:
+                    if (isinstance(origSco,Usryield)):
+                        newSco=deepcopy(origSco)
+                        newSco.setRegName(1,reg1name)
+                        newSco.setRegName(2,reg2name)
+                        slicingGeo.add(newSco,"SCO")
+        # - rename geometry entities
         slicingGeo.rename(regName)
-        # - take care of scorings
         # - flag regions for merging and create mapping
         slicingGeo.flagRegs("all",rCont=-1,rCent=PC)
         reg2Bsliced.initCont(rCont=1,rCent=PC)

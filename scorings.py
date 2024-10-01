@@ -27,17 +27,21 @@ class Scoring(GeoObject):
     def echo(self,what="all"):
         '''
         echo just the bare scoring cards and/or AUXSCORE card:
-        * what="ALL": all cards;
+        * what="ALL": everything;
         * what="AUX": only AUXSCORE card;
+        * what="COM": only comments;
         * what="SCO": only scoring cards;
         '''
         tmpBuf=""
+        if (what.upper().startswith("ALL") or what.upper().startswith("COM")):
+            tmpBuf=GeoObject.echoComm(self)
         if (what.upper().startswith("ALL") or what.upper().startswith("AUX")):
             if (self.hasAuxScoCard()):
                 tmpBuf=tmpBuf+"%-10s%10s%20s%10s%20s%-10s"%(\
                        "AUXSCORE",self.scoType,self.auxScoDef,self.echoName(),self.auxScoSDUM)
         if (what.upper().startswith("ALL") or what.upper().startswith("SCO")):
-            if (len(tmpBuf)>0): tmpBuf=tmpBuf+"\n"
+            if (what.upper().startswith("ALL") and self.hasAuxScoCard()):
+                tmpBuf=tmpBuf+"\n"
             for myDef,mySdum,myEoL in zip(self.definition,[self.echoName(),"&"],["\n",""]):
                 tmpBuf=tmpBuf+"%-10s%60s%-10s%-s"%(self.scoType,myDef,mySdum,myEoL)
         return tmpBuf
@@ -86,7 +90,7 @@ class Usrbin(Scoring):
     - a single ROTPRBIN card per transformation (1:1 mapping between ROTPRBIN and
       USRBIN cards); the mapping to the transformation is ALWAYS name-based;
       the ROTPRBIN card always PRECEEDs the respective USRBIN card;
-    - manipulation of unit, extremes and numbers of bins;
+    - manipulation of extremes and number of bins;
     '''
     def __init__(self,myName="",myComment=""):
         Scoring.__init__(self,myName=myName,myComment=myComment,scoType="USRBIN")
@@ -94,7 +98,7 @@ class Usrbin(Scoring):
 
     def echo(self):
         '''take into account comment'''
-        tmpBuf=GeoObject.echoComm(self)
+        tmpBuf=Scoring.echo(self,what="com")
         auxBuf=Scoring.echo(self,what="aux")
         if (len(auxBuf)>0): tmpBuf=tmpBuf+auxBuf+"\n"
         if (self.isLinkedToTransform() and len(self.TransfName)>0):
@@ -313,3 +317,33 @@ class Usrbin(Scoring):
     def isLinkedToTransform(self):
         return self.retTransformName() is not None
     
+class Usryield(Scoring):
+    '''
+    A very basic class for handling USRYIELD cards.
+    '''
+    def __init__(self,myName="",myComment=""):
+        Scoring.__init__(self,myName=myName,myComment=myComment,scoType="USRYIELD")
+
+    @staticmethod
+    def fromBuf(myBuffer):
+        return Scoring.fromBuf(myBuffer,newScoDet=Usryield())
+        
+    def setRegName(self,whichReg,regName):
+        if (whichReg==1 or whichReg==2):
+            self.definition[0]=self.definition[0][:30+10*(whichReg-1)]+\
+                               "%10s"%(regName.strip())+\
+                               self.definition[0][40+10*(whichReg-1):]
+        else:
+            print("Usryield.setRegName(): which region do you choose?")
+            exit(1)
+    def retRegName(self,whichReg):
+        if (whichReg==1 or whichReg==2):
+            return self.definition[0][30+10*(whichReg-1):40+10*(whichReg-1)].strip()
+        else:
+            print("Usryield.retRegName(): which region do you choose?")
+            exit(1)
+    def regNameReplaceInDef(self,oldName,newName):
+        for iReg in range(2):
+            if (self.retRegName(iReg+1)==oldName):
+                self.setRegName(iReg+1,newName)
+                break
