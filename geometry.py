@@ -903,7 +903,7 @@ class Geometry():
                 myReg.assignTrasf(myTrasfName=newTrasNames[ii])
         print("...done.")
 
-    def flagRegs(self,whichRegs,rCont,rCent):
+    def flagRegs(self,whichRegs,rCont,rCent=np.zeros(3)):
         if (isinstance(whichRegs,str)):
             if (whichRegs.upper()=="ALL"):
                 regs2mod,iRegs2mod=self.ret("reg","ALL")
@@ -1408,9 +1408,9 @@ class Geometry():
         - gridGeo: Geometry instance of the grid of objects;
         - mapping: dictionary:
           . mapping["iRhg"][ii]: ii-th hive region;
-          . mapping["jRhg"][ii]: ii-th element in hive list;
+          . mapping["jRhg"][ii]: ii-th element in list of hive geometries;
           . mapping["iRgg"][ii]: ii-th grid region;
-          . mapping["jRgg"][ii]: ii-th element in grid list;
+          . mapping["jRgg"][ii]: ii-th element in list of grid geometries;
         - mapType:
           . "oneHive": one hive region contains one or more grid regions;
           . "oneGrid": one grid region is contained in one or more hive regions;
@@ -1568,11 +1568,9 @@ class Geometry():
             exit(1)
         # - get infos
         P0=orientingBody.retCenter(myType=-1)
-        PC=orientingBody.retCenter()
         VV=orientingBody.retOrient()
         if (lDebug):
             print("...starting position: [%g,%g,%g];"%(P0[0],P0[1],P0[2]))
-            print("...centre:            [%g,%g,%g];"%(PC[0],PC[1],PC[2]))
             print("...orientation:       [%g,%g,%g];"%(VV[0],VV[1],VV[2]))
         # - build slicing geo and flag it for merging
         slicingGeo=Geometry.CreateSlicingGeo(zLocs,P0=P0,VV=VV,defMat=reg2Bsliced.material)
@@ -1627,9 +1625,9 @@ class Geometry():
         # - rename geometry entities
         slicingGeo.rename(regName)
         # - flag regions for merging and create mapping
-        slicingGeo.flagRegs("all",rCont=-1,rCent=PC)
-        reg2Bsliced.initCont(rCont=1,rCent=PC)
-        HiveGeo,GridGeo,mapping,mapType=MapGridLocsOntoHiveLocs(self,slicingGeo,lDebug=lDebug)
+        slicingGeo.flagRegs("all",rCont=-1)
+        reg2Bsliced.initCont(rCont=1)
+        HiveGeo,GridGeo,mapping,mapType=MapContRegs(self,slicingGeo,lDebug=lDebug)
         # - return merged geo
         return Geometry.MergeGeos(HiveGeo,GridGeo,mapping,mapType)
 
@@ -1671,7 +1669,8 @@ def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
 
 def MapGridLocsOntoHiveLocs(hiveGeo,gridGeo,lDebug=True,prec=0.001):
     '''
-    This method maps a grid of FLUKA geometries onto the hive.
+    This method maps a grid of FLUKA geometries onto the hive based
+      on the center coordinates of containing and contained regions.
 
     input parameters:
     - hiveGeo: list of Geometry instance(s) of the hive;
@@ -1681,18 +1680,18 @@ def MapGridLocsOntoHiveLocs(hiveGeo,gridGeo,lDebug=True,prec=0.001):
     output parameters:
     - mapping: dictionary:
       . mapping["iRhg"][ii]: ii-th hive region;
-      . mapping["jRhg"][ii]: ii-th element in hive list;
+      . mapping["jRhg"][ii]: ii-th element in list of hive geometries;
       . mapping["iRgg"][ii]: ii-th grid region;
-      . mapping["jRgg"][ii]: ii-th element in grid list;
+      . mapping["jRgg"][ii]: ii-th element in list of grid geometries;
     - mapType:
       . "oneHive": one hive region contains one or more grid regions;
       . "oneGrid": one grid region is contained in one or more hive regions;
 
     All the regions of gridGeo with rCont==-1 will be matched with regions
-      of hiveGeo with rCont==1; a one-to-one mapping is established based
-      on the rCent arrays.
+      of hiveGeo with rCont==1 if they have the same center coordinates via
+      a one-to-one mapping established based on the rCent arrays.
     '''
-    print("mapping grid and hive geometries...")
+    print("mapping grid and hive geometries based on region flagging and center coordinates...")
     if (isinstance(hiveGeo,Geometry)): hiveGeo=[hiveGeo]
     if (isinstance(gridGeo,Geometry)): gridGeo=[gridGeo]
     # hiveGeo
@@ -1755,6 +1754,69 @@ def MapGridLocsOntoHiveLocs(hiveGeo,gridGeo,lDebug=True,prec=0.001):
         exit(1)
         
     return hiveGeo, gridGeo, mapping, mapType
+
+def MapContRegs(CtainGeo,CinedGeo,lDebug=True):
+    '''
+    This method maps the region(s) of a FLUKA geometry containing
+      the region(s) of another FLUKA geometry. Supported cases:
+    - a single container region and multiple contained regions;
+    - multiple container regions and a single contained region;
+    For multi-regions containing multi-regions, please use the
+      mapping function based on region centres.
+
+    input parameters:
+    - CtainGeo: Geometry instance with the container region(s);
+    - CinedGeo: Geometry instance with the contained region(s).
+
+    output parameters:
+    - mapping: dictionary:
+      . mapping["iRhg"][ii]: ii-th containing region(s);
+      . mapping["jRhg"][ii]: ii-th element in list of geometries with continaing regions;
+      . mapping["iRgg"][ii]: ii-th contained region(s);
+      . mapping["jRgg"][ii]: ii-th element in list of geometries with contained regions;
+    - mapType:
+      . "oneHive": one hive region contains one or more grid regions;
+      . "oneGrid": one grid region is contained in one or more hive regions;
+
+    All the regions of CinedGeo with rCont==-1 will be matched with regions
+      of CtainGeo with rCont==1.
+    '''
+    # output
+    print("mapping grid and hive geometries based on region flagging only...")
+    mapping={"iRhg":[],"iRgg":[]}
+    iRhgs=[ ii for ii,mReg in enumerate(CtainGeo.regs) if mReg.rCont==1 ]
+    iRggs=[ ii for ii,mReg in enumerate(CinedGeo.regs) if mReg.rCont==-1 ]
+    if (lDebug):
+        print("...found %d containing regions:"%(len(iRhgs)))
+        print(iRhgs)
+        print("...found %d contained regions:"%(len(iRggs)))
+        print(iRggs)
+    if (len(iRhgs)>1 and len(iRggs)>1):
+        print("Cannot merge many contained regions into many containing regions!")
+        exit(1)
+    elif (len(iRhgs)>1 and len(iRggs)==1):
+        # multiple containing regions for a single contained region
+        mapType="oneGrid"
+        if (lDebug): print("...one contained region and %d containing regions;"%(len(iRhgs)))
+        #   merge each contained grid region into the concerned
+        #   hive region(s), and then remove the grid region
+        mapping["iRhg"]=iRhgs
+        mapping["iRgg"]=[ iRggs[0] for iRhg in iRhgs ]
+    else:
+        # a single containing regions for multiple contained regions
+        mapType="oneHive"
+        if (lDebug): print("...one containing region and %d contained regions;"%(len(iRggs)))
+        #   merge each containing region into the concerned
+        #   contained region(s), and then remove the container region
+        mapping["iRhg"]=[ iRhgs[0] for iRgg in iRggs ]
+        mapping["iRgg"]=iRggs
+    # keep compatibility with MergeGeos
+    if (isinstance(CtainGeo,Geometry)): CtainGeo=[CtainGeo]
+    if (isinstance(CinedGeo,Geometry)): CinedGeo=[CinedGeo]
+    mapping["jRhg"]=[ 0 for iRhg in mapping["iRhg"] ]
+    mapping["jRgg"]=[ 0 for iRgg in mapping["iRgg"] ]
+    print(mapping)
+    return CtainGeo, CinedGeo, mapping, mapType
 
 def ResizeBodies(hiveGeo,gridGeo,mapping,lDebug=True,enlargeFact=1.1):
     if (enlargeFact is not None):
