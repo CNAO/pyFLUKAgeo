@@ -275,7 +275,7 @@ class Usrbin(Scoring):
                 print("Usrbin.move(): cannot set absPos=",myCoord,"axes",axes)
                 exit(1)
             for tCoord,tAx in zip(myCoord,axes):
-                if (tCoord!=0.0): self.move(tCoord,axes=tAx,lFree=lFree)
+                if (tCoord!=0.0): self.move(tCoord,axes=tAx,lAbs=lAbs,lFree=lFree)
         elif (not isinstance(myCoord,list) and not isinstance(myCoord,np.ndarray) and not isinstance(axes,list)):
             currMin,currMax=self.getExtremes(axes=axes)
             currDelta=currMax-currMin
