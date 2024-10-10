@@ -866,13 +866,18 @@ class Geometry():
                 # USRBIN part
                 if (not lOnlyGeo):
                     lCreate=False; Tname="%s_bin"%(myName); tTrasfs=[]
+                    lTraslOnly=(dd is not None and myMat is None and myTheta is None)
                     for myBin in self.bins:
-                        if ( myBin.isLinkedToTransform() ):
+                        if (lDebug): print("BEFORE moving:"); print(myBin.echo())
+                        if (lTraslOnly and not myBin.isLinkedToTransform() ):
+                            myBin.move(dd,axes=["X","Y","Z"],lAbs=False)
+                        elif ( myBin.isLinkedToTransform() ):
                             myTname=myBin.retTransformName()
                             if (myTname not in tTrasfs): tTrasfs.append(myTname)
                         else:
                             myBin.assignTransformName(Tname)
                             if (not lCreate): lCreate=True
+                        if (lDebug): print("AFTER moving:"); print(myBin.echo())
                     # current transformation alone
                     if (lCreate):
                         myEntry,iEntry=self.ret("TRANSF",Tname)
@@ -1096,7 +1101,7 @@ class Geometry():
         if (lDebug): print("...done;")
 
     def moveUsrbins(self,myCoord,axes=3,whichBins=None,lAbs=True,lDebug=False):
-        if (lDebug): print("moving USRBINs...")
+        if (lDebug): print("moving USRBINs by",myCoord,"along axes",axes)
         if (whichBins is None): whichBins="ALL"
         if (isinstance(whichBins,str)):
             if (whichBins.upper()=="ALL"):
@@ -1111,9 +1116,11 @@ class Geometry():
                 tBins2mod,tIBins2mod=self.ret("BIN",whichBin)
                 if (isinstance(tBins2mod,list)):
                     bins2mod=bins2mod+tBins2mod
+                    iBins2mod=iBins2mod+tIBins2mod
                     print("moving %d USRBINs named %s ..."%(len(tBins2mod),whichBin))
                 else:
                     bins2mod.append(tBins2mod)
+                    iBins2mod.append(tIBins2mod)
                     print("moving USRBIN named %s ..."%(whichBin))
         else:
             print("Geometry.resizeUsrbins(): Wrong indication of USRBINs for moving!")
