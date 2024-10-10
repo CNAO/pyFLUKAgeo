@@ -64,7 +64,7 @@ class Region(GeoObject):
         for oName,nName in zip(oldNames,newNames):
             self.definition=self.definition.replace(oName,nName)
 
-    def assignMat(self,myMaterial):
+    def assignMat(self,myMaterial="VACUUM"):
         self.material=myMaterial
 
     def assignLat(self,myLatName=None):
