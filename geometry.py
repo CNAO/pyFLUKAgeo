@@ -928,8 +928,7 @@ class Geometry():
                     print("cannot find transformation named %s!"%(trName))
                     exit(1)
             else:
-                print("Geometry.rename(): USRBIN with no associated transformation!")
-                exit(1)
+                print("Geometry.rename(): USRBIN %s with no associated transformation..."%(myBin.echoName()))
         for iSco,mySco in enumerate(self.scos):
             mySco.rename(nNameScoFmt%(iSco+1),lNotify=lNotify)
             for oName,nName in zip(oldRegNames,newRegNames):
@@ -1468,6 +1467,7 @@ class Geometry():
           for the time being.
         '''
         print("merging geometries...")
+        if (lDebug): print("...using %s map type;"%(mapType))
         removeRegs=[]; jRemoveRegs=[]
         if (mapType=="oneHive"):
             # for each location, only one hive region is concerned:
@@ -1486,7 +1486,7 @@ class Geometry():
             for removeReg,jRemoveReg in zip(removeRegs,jRemoveRegs):
                 myReg,iReg=hiveGeo[jRemoveReg].ret("REG",removeReg)
                 hiveGeo[jRemoveReg].regs.pop(iReg)
-        elif(mapType=="oneGridoneHive"):
+        elif(mapType=="oneGrid"):
             # for each location, only one grid region is concerned:
             #   merge each contained grid region into the concerned
             #   hive regions, and then remove the grid region
@@ -1683,19 +1683,29 @@ class Geometry():
     def insertGeoInGeo(self,geoToInsert,extName,regName,lDebug=True):
         if (lDebug): print("inserting geometry...")
         # - outer region of geometry to insert
-        myReg,iReg=geoToInsert.ret("Reg",extName)
-        if (myReg is None):
-            print("...region %s NOT found in geometry to insert!"%(extName))
-            exit(1)
-        else:
-            myReg.initCont(rCont=-1)
+        if (isinstance(extName,list)):
+            extNames=extName
+        elif (isinstance(extName,str)):
+            extNames=[extName]
+        for myName in extNames:
+            myReg,iReg=geoToInsert.ret("Reg",myName)
+            if (myReg is None):
+                print("...region %s NOT found in geometry to insert!"%(myName))
+                exit(1)
+            else:
+                myReg.initCont(rCont=-1)
         # - region of outer geometry where to insert geometry
-        myReg,iReg=self.ret("Reg",regName)
-        if (myReg is None):
-            print("...region %s NOT found in hosting geometry!"%(regName))
-            exit(1)
-        else:
-            myReg.initCont(rCont=1)
+        if (isinstance(regName,list)):
+            regNames=regName
+        elif (isinstance(regName,str)):
+            regNames=[regName]
+        for myName in regNames:
+            myReg,iReg=self.ret("Reg",myName)
+            if (myReg is None):
+                print("...region %s NOT found in hosting geometry!"%(myName))
+                exit(1)
+            else:
+                myReg.initCont(rCont=1)
         # - merge
         HiveGeo,GridGeo,mapping,mapType=MapContRegs(self,geoToInsert,lDebug=lDebug)
         return Geometry.MergeGeos(HiveGeo,GridGeo,mapping,mapType)
@@ -1863,7 +1873,7 @@ def MapContRegs(CtainGeo,CinedGeo,lDebug=True):
     if (len(iRhgs)>1 and len(iRggs)>1):
         print("Cannot merge many contained regions into many containing regions!")
         exit(1)
-    elif (len(iRhgs)>1 and len(iRggs)==1):
+    elif (len(iRhgs)>=1 and len(iRggs)==1):
         # multiple containing regions for a single contained region
         mapType="oneGrid"
         if (lDebug): print("...one contained region and %d containing regions;"%(len(iRhgs)))
@@ -1884,7 +1894,7 @@ def MapContRegs(CtainGeo,CinedGeo,lDebug=True):
     if (isinstance(CinedGeo,Geometry)): CinedGeo=[CinedGeo]
     mapping["jRhg"]=[ 0 for iRhg in mapping["iRhg"] ]
     mapping["jRgg"]=[ 0 for iRgg in mapping["iRgg"] ]
-    print(mapping)
+    if (lDebug): print(mapping)
     return CtainGeo, CinedGeo, mapping, mapType
 
 def ResizeBodies(hiveGeo,gridGeo,mapping,lDebug=True,enlargeFact=1.1):
