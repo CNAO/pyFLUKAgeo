@@ -27,7 +27,7 @@ class Region(GeoObject):
         # additional fields
         self.initCont()
 
-    def initCont(self,rCont=0,rCent=np.array([0.0,0.0,0.0]),rMaxLen=0.0):
+    def initCont(self,rCont=0,rCent=np.zeros(3),rMaxLen=0.0):
         self.rCont=rCont # containment indicator (1 per region):
                          # -1: region to be contained into/sized by another one
                          #  0: regular region (neither contains nor it is contained)
@@ -64,7 +64,7 @@ class Region(GeoObject):
         for oName,nName in zip(oldNames,newNames):
             self.definition=self.definition.replace(oName,nName)
 
-    def assignMat(self,myMaterial):
+    def assignMat(self,myMaterial="VACUUM"):
         self.material=myMaterial
 
     def assignLat(self,myLatName=None):

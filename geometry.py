@@ -15,15 +15,17 @@ from FLUKA import HighLightComment, TailNameInt
 class Geometry():
     '''
     - name-based FLUKA geometry defition;
-    - no support for LATTICE cards at parsing;
     - NO support for #include cards or geo defitions in files other than that
        being parsed;
+    - basic support for LATTICE cards at parsing:
+      . no check of existence of lattice region or of transformations;
     - comments:
       . in general, only comments preceeding a specific card are retained;
-        --> trailing comments to body declaration section will disappear!
       . body: commented lines are considered always before the body;
+              --> trailing comments to body declaration section will disappear!
       . region: commented lines are kept where they are found, if they are
                 found before or along the region declaration;
+      . lattice: comments are ignored;
       . rot-defi: commented lines are considered always before the rot-defi card;
       . usrbin: commented lines are considered always before the URSBIN card;
     - #define vars used only at parsing level, i.e. they are not stored
@@ -60,24 +62,56 @@ class Geometry():
         self.title=tmpTitle
         
     def assignma(self,tmpLine):
-        'crunch info by ASSIGNMA card'
+        '''
+        crunch info by ASSIGNMA card
+        - no additional info (e.g. magfield...)
+        '''
         data=tmpLine.split()
         myMatName=data[1]
-        myRegName=data[2]
-        print("...assigning material %s to region %s..."%(myMatName,myRegName))
-        myEntry,iEntry=self.ret("REG",myRegName)
-        self.regs[iEntry].assignMat(myMatName)
+        myFirstRegName=data[2]
+        myEntry,iFirst=self.ret("REG",myFirstRegName)
+        if (len(data)>=4):
+            myLastRegName=data[3]
+            myEntry,iLast=self.ret("REG",myLastRegName)
+        else:
+            iLast=iFirst
+        if (len(data)>=5):
+            iStep=int(data[4])
+        else:
+            iStep=1
+        for iEntry in range(iFirst,iLast+1,iStep):
+            print("...assigning material %s to region %s..."%(myMatName,self.regs[iEntry].echoName()))
+            self.regs[iEntry].assignMat(myMatName)
 
     def rotdefi(self,tmpBuf,lFree=True):
         'crunch info by ROT-DEFI card'
         tmpRotDefi,myID,myName=RotDefi.fromBuf(tmpBuf,lFree=lFree)
         myEntry,iEntry=self.ret("TRANSF",myName)
         if (iEntry==-1):
+            if (myID==-1):
+                myEntries,myIDs=self.ret("TRANSF","all")
+                myID=len(myEntries)+1
             # brand new transformation
-            myTrans=Transformation(myID=myID,myName=myName)
-            self.add(myTrans,"TRANSF")
-            iEntry=0
+            self.add(Transformation(myID=myID,myName=myName),"TRANSF")
         self.tras[iEntry].AddRotDefi(tmpRotDefi)
+
+    def lattice(self,tmpLine,lDebug=False):
+        '''
+        crunch info by LATTICE card:
+        - only one lattice region;
+        - only one lattice;
+        '''
+        data=tmpLine.split()
+        myLatName=data[1]
+        myRegName=data[2]
+        myRotName=data[3]
+        if (lDebug):
+            print("...flagging region %s as lattice %s with transformation %s..."%(
+                myRegName,myLatName,myRotName))
+        myEntry,iEntry=self.ret("REG",myRegName)
+        self.regs[iEntry].assignLat(myLatName)
+        self.regs[iEntry].assignTrasf(myRotName)
+        self.regs[iEntry].assignMat()
 
     def headMe(self,myString,begLine=None,endLine=None):
         '''
@@ -296,6 +330,7 @@ class Geometry():
         ff=open(myInpName,'r')
         lFree=False
         lReads=[True]
+        lElse=[]
         lBuffReg=iRead==3 # reading a region-only file: empty buffer
         tmpBuf=""
         regBuf=""
@@ -314,16 +349,19 @@ class Geometry():
             elif (tmpLine.startswith("#if")):
                 data=tmpLine.split()
                 lReads.append(data[1] in defineFlags)
+                lElse.append(data[1] in defineFlags)
                 continue
             elif (tmpLine.startswith("#elif")):
                 data=tmpLine.split()
                 lReads[-1]=(data[1] in defineFlags)
+                lElse[-1]=lElse[-1] or (data[1] in defineFlags)
                 continue
             elif (tmpLine.startswith("#else")):
-                lReads[-1]=not lReads[-1]
+                lReads[-1]=not lElse[-1]
                 continue
             elif (tmpLine.startswith("#end")):
                 lReads.pop()
+                lElse.pop()
                 continue
             if (not all(lReads)): continue
             
@@ -410,7 +448,7 @@ class Geometry():
                         newGeom.add(Region.fromBuf(regBuf),what="reg")
                         regBuf="" # flush region def buffer
                     tmpBuf="" # flush buffer
-                    iRead=0 # ignore LATTICE cards
+                    iRead=4
                 else:
                     if (tmpLine.startswith("*")):
                         # comment line: store in buffer
@@ -428,6 +466,16 @@ class Geometry():
                             regBuf="" # flush region def buffer
                         regBuf=tmpBuf+tmpLine
                         tmpBuf="" # flush buffer
+                    
+            elif (iRead==4):
+                # LATTICE cards
+                if (tmpLine.startswith("GEOEND")):
+                    tmpBuf="" # flush buffer
+                    iRead=0
+                elif (tmpLine.startswith("LATTICE")):
+                    # acquire card
+                    newGeom.lattice(tmpLine)
+                continue
                     
         ff.close()
         if (lBuffReg and iRead==3 and len(regBuf)>0):
@@ -502,7 +550,7 @@ class Geometry():
             ff.close()
             print("...done;")
         elif (what.upper().startswith("LAT")):
-            LatNames=self.ret("LAT","ALL")
+            LatNames,iLat=self.ret("LAT","ALL")
             if (len(LatNames)>0):
                 print("saving LATTICE cards in file %s ..."%(oFileName))
                 ff=open(oFileName,dMode)
@@ -749,9 +797,10 @@ class Geometry():
                 if (not lGeoDirs):
                     for myBod in self.bods:
                         myBod.traslate(dd=dd)
-                myDD=-dd
+                myDD=dd
                 if (isinstance(myDD,list)):
-                    myDD=np.array(DD)
+                    myDD=np.array(dd)
+                myDD=-myDD
                 ROTDEFIlist.append(RotDefi(myDD=myDD))
                 if (lWrapGeo): ROTDEFIlistINV.append(RotDefi(myDD=-myDD))
             if (len(ROTDEFIlist)>0):
@@ -879,8 +928,7 @@ class Geometry():
                     print("cannot find transformation named %s!"%(trName))
                     exit(1)
             else:
-                print("Geometry.rename(): USRBIN with no associated transformation!")
-                exit(1)
+                print("Geometry.rename(): USRBIN %s with no associated transformation..."%(myBin.echoName()))
         for iSco,mySco in enumerate(self.scos):
             mySco.rename(nNameScoFmt%(iSco+1),lNotify=lNotify)
             for oName,nName in zip(oldRegNames,newRegNames):
@@ -903,7 +951,7 @@ class Geometry():
                 myReg.assignTrasf(myTrasfName=newTrasNames[ii])
         print("...done.")
 
-    def flagRegs(self,whichRegs,rCont,rCent):
+    def flagRegs(self,whichRegs,rCont,rCent=np.zeros(3)):
         if (isinstance(whichRegs,str)):
             if (whichRegs.upper()=="ALL"):
                 regs2mod,iRegs2mod=self.ret("reg","ALL")
@@ -1408,9 +1456,9 @@ class Geometry():
         - gridGeo: Geometry instance of the grid of objects;
         - mapping: dictionary:
           . mapping["iRhg"][ii]: ii-th hive region;
-          . mapping["jRhg"][ii]: ii-th element in hive list;
+          . mapping["jRhg"][ii]: ii-th element in list of hive geometries;
           . mapping["iRgg"][ii]: ii-th grid region;
-          . mapping["jRgg"][ii]: ii-th element in grid list;
+          . mapping["jRgg"][ii]: ii-th element in list of grid geometries;
         - mapType:
           . "oneHive": one hive region contains one or more grid regions;
           . "oneGrid": one grid region is contained in one or more hive regions;
@@ -1419,6 +1467,7 @@ class Geometry():
           for the time being.
         '''
         print("merging geometries...")
+        if (lDebug): print("...using %s map type;"%(mapType))
         removeRegs=[]; jRemoveRegs=[]
         if (mapType=="oneHive"):
             # for each location, only one hive region is concerned:
@@ -1437,7 +1486,7 @@ class Geometry():
             for removeReg,jRemoveReg in zip(removeRegs,jRemoveRegs):
                 myReg,iReg=hiveGeo[jRemoveReg].ret("REG",removeReg)
                 hiveGeo[jRemoveReg].regs.pop(iReg)
-        elif(mapType=="oneGridoneHive"):
+        elif(mapType=="oneGrid"):
             # for each location, only one grid region is concerned:
             #   merge each contained grid region into the concerned
             #   hive regions, and then remove the grid region
@@ -1568,11 +1617,9 @@ class Geometry():
             exit(1)
         # - get infos
         P0=orientingBody.retCenter(myType=-1)
-        PC=orientingBody.retCenter()
         VV=orientingBody.retOrient()
         if (lDebug):
             print("...starting position: [%g,%g,%g];"%(P0[0],P0[1],P0[2]))
-            print("...centre:            [%g,%g,%g];"%(PC[0],PC[1],PC[2]))
             print("...orientation:       [%g,%g,%g];"%(VV[0],VV[1],VV[2]))
         # - build slicing geo and flag it for merging
         slicingGeo=Geometry.CreateSlicingGeo(zLocs,P0=P0,VV=VV,defMat=reg2Bsliced.material)
@@ -1627,10 +1674,40 @@ class Geometry():
         # - rename geometry entities
         slicingGeo.rename(regName)
         # - flag regions for merging and create mapping
-        slicingGeo.flagRegs("all",rCont=-1,rCent=PC)
-        reg2Bsliced.initCont(rCont=1,rCent=PC)
-        HiveGeo,GridGeo,mapping,mapType=MapGridLocsOntoHiveLocs(self,slicingGeo,lDebug=lDebug)
+        slicingGeo.flagRegs("all",rCont=-1)
+        reg2Bsliced.initCont(rCont=1)
+        HiveGeo,GridGeo,mapping,mapType=MapContRegs(self,slicingGeo,lDebug=lDebug)
         # - return merged geo
+        return Geometry.MergeGeos(HiveGeo,GridGeo,mapping,mapType)
+
+    def insertGeoInGeo(self,geoToInsert,extName,regName,lDebug=True):
+        if (lDebug): print("inserting geometry...")
+        # - outer region of geometry to insert
+        if (isinstance(extName,list)):
+            extNames=extName
+        elif (isinstance(extName,str)):
+            extNames=[extName]
+        for myName in extNames:
+            myReg,iReg=geoToInsert.ret("Reg",myName)
+            if (myReg is None):
+                print("...region %s NOT found in geometry to insert!"%(myName))
+                exit(1)
+            else:
+                myReg.initCont(rCont=-1)
+        # - region of outer geometry where to insert geometry
+        if (isinstance(regName,list)):
+            regNames=regName
+        elif (isinstance(regName,str)):
+            regNames=[regName]
+        for myName in regNames:
+            myReg,iReg=self.ret("Reg",myName)
+            if (myReg is None):
+                print("...region %s NOT found in hosting geometry!"%(myName))
+                exit(1)
+            else:
+                myReg.initCont(rCont=1)
+        # - merge
+        HiveGeo,GridGeo,mapping,mapType=MapContRegs(self,geoToInsert,lDebug=lDebug)
         return Geometry.MergeGeos(HiveGeo,GridGeo,mapping,mapType)
 
 def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
@@ -1671,7 +1748,8 @@ def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
 
 def MapGridLocsOntoHiveLocs(hiveGeo,gridGeo,lDebug=True,prec=0.001):
     '''
-    This method maps a grid of FLUKA geometries onto the hive.
+    This method maps a grid of FLUKA geometries onto the hive based
+      on the center coordinates of containing and contained regions.
 
     input parameters:
     - hiveGeo: list of Geometry instance(s) of the hive;
@@ -1681,18 +1759,18 @@ def MapGridLocsOntoHiveLocs(hiveGeo,gridGeo,lDebug=True,prec=0.001):
     output parameters:
     - mapping: dictionary:
       . mapping["iRhg"][ii]: ii-th hive region;
-      . mapping["jRhg"][ii]: ii-th element in hive list;
+      . mapping["jRhg"][ii]: ii-th element in list of hive geometries;
       . mapping["iRgg"][ii]: ii-th grid region;
-      . mapping["jRgg"][ii]: ii-th element in grid list;
+      . mapping["jRgg"][ii]: ii-th element in list of grid geometries;
     - mapType:
       . "oneHive": one hive region contains one or more grid regions;
       . "oneGrid": one grid region is contained in one or more hive regions;
 
     All the regions of gridGeo with rCont==-1 will be matched with regions
-      of hiveGeo with rCont==1; a one-to-one mapping is established based
-      on the rCent arrays.
+      of hiveGeo with rCont==1 if they have the same center coordinates via
+      a one-to-one mapping established based on the rCent arrays.
     '''
-    print("mapping grid and hive geometries...")
+    print("mapping grid and hive geometries based on region flagging and center coordinates...")
     if (isinstance(hiveGeo,Geometry)): hiveGeo=[hiveGeo]
     if (isinstance(gridGeo,Geometry)): gridGeo=[gridGeo]
     # hiveGeo
@@ -1755,6 +1833,69 @@ def MapGridLocsOntoHiveLocs(hiveGeo,gridGeo,lDebug=True,prec=0.001):
         exit(1)
         
     return hiveGeo, gridGeo, mapping, mapType
+
+def MapContRegs(CtainGeo,CinedGeo,lDebug=True):
+    '''
+    This method maps the region(s) of a FLUKA geometry containing
+      the region(s) of another FLUKA geometry. Supported cases:
+    - a single container region and multiple contained regions;
+    - multiple container regions and a single contained region;
+    For multi-regions containing multi-regions, please use the
+      mapping function based on region centres.
+
+    input parameters:
+    - CtainGeo: Geometry instance with the container region(s);
+    - CinedGeo: Geometry instance with the contained region(s).
+
+    output parameters:
+    - mapping: dictionary:
+      . mapping["iRhg"][ii]: ii-th containing region(s);
+      . mapping["jRhg"][ii]: ii-th element in list of geometries with continaing regions;
+      . mapping["iRgg"][ii]: ii-th contained region(s);
+      . mapping["jRgg"][ii]: ii-th element in list of geometries with contained regions;
+    - mapType:
+      . "oneHive": one hive region contains one or more grid regions;
+      . "oneGrid": one grid region is contained in one or more hive regions;
+
+    All the regions of CinedGeo with rCont==-1 will be matched with regions
+      of CtainGeo with rCont==1.
+    '''
+    # output
+    print("mapping grid and hive geometries based on region flagging only...")
+    mapping={"iRhg":[],"iRgg":[]}
+    iRhgs=[ ii for ii,mReg in enumerate(CtainGeo.regs) if mReg.rCont==1 ]
+    iRggs=[ ii for ii,mReg in enumerate(CinedGeo.regs) if mReg.rCont==-1 ]
+    if (lDebug):
+        print("...found %d containing regions:"%(len(iRhgs)))
+        print(iRhgs)
+        print("...found %d contained regions:"%(len(iRggs)))
+        print(iRggs)
+    if (len(iRhgs)>1 and len(iRggs)>1):
+        print("Cannot merge many contained regions into many containing regions!")
+        exit(1)
+    elif (len(iRhgs)>=1 and len(iRggs)==1):
+        # multiple containing regions for a single contained region
+        mapType="oneGrid"
+        if (lDebug): print("...one contained region and %d containing regions;"%(len(iRhgs)))
+        #   merge each contained grid region into the concerned
+        #   hive region(s), and then remove the grid region
+        mapping["iRhg"]=iRhgs
+        mapping["iRgg"]=[ iRggs[0] for iRhg in iRhgs ]
+    else:
+        # a single containing regions for multiple contained regions
+        mapType="oneHive"
+        if (lDebug): print("...one containing region and %d contained regions;"%(len(iRggs)))
+        #   merge each containing region into the concerned
+        #   contained region(s), and then remove the container region
+        mapping["iRhg"]=[ iRhgs[0] for iRgg in iRggs ]
+        mapping["iRgg"]=iRggs
+    # keep compatibility with MergeGeos
+    if (isinstance(CtainGeo,Geometry)): CtainGeo=[CtainGeo]
+    if (isinstance(CinedGeo,Geometry)): CinedGeo=[CinedGeo]
+    mapping["jRhg"]=[ 0 for iRhg in mapping["iRhg"] ]
+    mapping["jRgg"]=[ 0 for iRgg in mapping["iRgg"] ]
+    if (lDebug): print(mapping)
+    return CtainGeo, CinedGeo, mapping, mapType
 
 def ResizeBodies(hiveGeo,gridGeo,mapping,lDebug=True,enlargeFact=1.1):
     if (enlargeFact is not None):

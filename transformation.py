@@ -14,12 +14,13 @@ class RotDefi(GeoObject):
     - parsing in FREE format expects an empty space as field separator;
     '''
 
-    def __init__(self,myAx=3,myPhi=0.0,myTh=0.0,myDD=np.zeros(3),myComment=""):
+    def __init__(self,myAx=3,myPhi=0.0,myTh=0.0,myDD=None,myComment=""):
         # mainly for comments, name NOT used!
         GeoObject.__init__(self,myComment=myComment)
         self.axis=myAx           # FLUKA coding: 1=x, 2=y, 3=z
         self.phi=myPhi           # polar angle [degrees] (FLUKA units)
         self.theta=myTh          # azimuth angle [degrees] (FLUKA units)
+        if (myDD is None): myDD=np.zeros(3) # bug in python garbage collector?
         self.DD=myDD             # translation [cm] (x,y,z components)
 
     def echo(self,lFree=True,myID=0,myName="",\
@@ -48,6 +49,8 @@ class RotDefi(GeoObject):
     def fromBuf(myBuffer,lFree=True):
         '''parsing in FREE format expects an empty space as field separator'''
         newRotDefi=RotDefi()
+        myID=-1
+        myName=None
         for tmpLine in myBuffer.splitlines():
             if (tmpLine.startswith("*")):
                 newRotDefi.tailMe(tmpLine.strip())
@@ -67,18 +70,20 @@ class RotDefi(GeoObject):
                     DD=[tmpLine[40:50].strip(),tmpLine[50:60].strip(),tmpLine[60:70].strip()]
                     myName=tmpLine[70:80].strip()
                 # store data
-                pID=float(pID)
-                if (pID>1000):
-                    myID=int(pID/1000)
-                    myAxis=int(pID%1000)
-                else:
-                    myAxis=int(pID/100)
-                    myID=int(pID%100)
-                if (myAxis>0):
-                    newRotDefi.axis=myAxis
-                newRotDefi.phi=float(phi)
-                newRotDefi.theta=float(tht)
-                newRotDefi.DD=np.array([float(myDD) for myDD in DD])
+                if (len(pID)>0):
+                    pID=float(pID)
+                    if (pID>1000):
+                        myID=int(pID/1000)
+                        myAxis=int(pID%1000)
+                    else:
+                        myAxis=int(pID/100)
+                        myID=int(pID%100)
+                    if (myAxis>0):
+                        newRotDefi.axis=myAxis
+                if (len(phi)>0): newRotDefi.phi=float(phi)
+                if (len(tht)>0): newRotDefi.theta=float(tht)
+                for ii in range(3):
+                    if (len(DD[ii])>0): newRotDefi.DD[ii]=float(DD[ii])
         return newRotDefi, myID, myName
 
 class Transformation(GeoObject):
@@ -142,7 +147,7 @@ class Transformation(GeoObject):
             self.AddRotDefi(myRotDefi,iAdd=iAdd,lMoveComment=lMoveComment)
 
     @staticmethod
-    def fromBuf(self,myBuffer,lFree=True):
+    def fromBuf(myBuffer,lFree=True):
         newTransf=Transformation()
         myBuf=""
         for tmpLine in myBuffer.splitlines():
