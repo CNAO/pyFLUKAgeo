@@ -15,15 +15,17 @@ from FLUKA import HighLightComment, TailNameInt
 class Geometry():
     '''
     - name-based FLUKA geometry defition;
-    - no support for LATTICE cards at parsing;
     - NO support for #include cards or geo defitions in files other than that
        being parsed;
+    - basic support for LATTICE cards at parsing:
+      . no check of existence of lattice region or of transformations;
     - comments:
       . in general, only comments preceeding a specific card are retained;
-        --> trailing comments to body declaration section will disappear!
       . body: commented lines are considered always before the body;
+              --> trailing comments to body declaration section will disappear!
       . region: commented lines are kept where they are found, if they are
                 found before or along the region declaration;
+      . lattice: comments are ignored;
       . rot-defi: commented lines are considered always before the rot-defi card;
       . usrbin: commented lines are considered always before the URSBIN card;
     - #define vars used only at parsing level, i.e. they are not stored
@@ -60,24 +62,56 @@ class Geometry():
         self.title=tmpTitle
         
     def assignma(self,tmpLine):
-        'crunch info by ASSIGNMA card'
+        '''
+        crunch info by ASSIGNMA card
+        - no additional info (e.g. magfield...)
+        '''
         data=tmpLine.split()
         myMatName=data[1]
-        myRegName=data[2]
-        print("...assigning material %s to region %s..."%(myMatName,myRegName))
-        myEntry,iEntry=self.ret("REG",myRegName)
-        self.regs[iEntry].assignMat(myMatName)
+        myFirstRegName=data[2]
+        myEntry,iFirst=self.ret("REG",myFirstRegName)
+        if (len(data)>=4):
+            myLastRegName=data[3]
+            myEntry,iLast=self.ret("REG",myLastRegName)
+        else:
+            iLast=iFirst
+        if (len(data)>=5):
+            iStep=int(data[4])
+        else:
+            iStep=1
+        for iEntry in range(iFirst,iLast+1,iStep):
+            print("...assigning material %s to region %s..."%(myMatName,self.regs[iEntry].echoName()))
+            self.regs[iEntry].assignMat(myMatName)
 
     def rotdefi(self,tmpBuf,lFree=True):
         'crunch info by ROT-DEFI card'
         tmpRotDefi,myID,myName=RotDefi.fromBuf(tmpBuf,lFree=lFree)
         myEntry,iEntry=self.ret("TRANSF",myName)
         if (iEntry==-1):
+            if (myID==-1):
+                myEntries,myIDs=self.ret("TRANSF","all")
+                myID=len(myEntries)+1
             # brand new transformation
-            myTrans=Transformation(myID=myID,myName=myName)
-            self.add(myTrans,"TRANSF")
-            iEntry=0
+            self.add(Transformation(myID=myID,myName=myName),"TRANSF")
         self.tras[iEntry].AddRotDefi(tmpRotDefi)
+
+    def lattice(self,tmpLine,lDebug=False):
+        '''
+        crunch info by LATTICE card:
+        - only one lattice region;
+        - only one lattice;
+        '''
+        data=tmpLine.split()
+        myLatName=data[1]
+        myRegName=data[2]
+        myRotName=data[3]
+        if (lDebug):
+            print("...flagging region %s as lattice %s with transformation %s..."%(
+                myRegName,myLatName,myRotName))
+        myEntry,iEntry=self.ret("REG",myRegName)
+        self.regs[iEntry].assignLat(myLatName)
+        self.regs[iEntry].assignTrasf(myRotName)
+        self.regs[iEntry].assignMat()
 
     def headMe(self,myString,begLine=None,endLine=None):
         '''
@@ -296,6 +330,7 @@ class Geometry():
         ff=open(myInpName,'r')
         lFree=False
         lReads=[True]
+        lElse=[]
         lBuffReg=iRead==3 # reading a region-only file: empty buffer
         tmpBuf=""
         regBuf=""
@@ -314,16 +349,19 @@ class Geometry():
             elif (tmpLine.startswith("#if")):
                 data=tmpLine.split()
                 lReads.append(data[1] in defineFlags)
+                lElse.append(data[1] in defineFlags)
                 continue
             elif (tmpLine.startswith("#elif")):
                 data=tmpLine.split()
                 lReads[-1]=(data[1] in defineFlags)
+                lElse[-1]=lElse[-1] or (data[1] in defineFlags)
                 continue
             elif (tmpLine.startswith("#else")):
-                lReads[-1]=not lReads[-1]
+                lReads[-1]=not lElse[-1]
                 continue
             elif (tmpLine.startswith("#end")):
                 lReads.pop()
+                lElse.pop()
                 continue
             if (not all(lReads)): continue
             
@@ -410,7 +448,7 @@ class Geometry():
                         newGeom.add(Region.fromBuf(regBuf),what="reg")
                         regBuf="" # flush region def buffer
                     tmpBuf="" # flush buffer
-                    iRead=0 # ignore LATTICE cards
+                    iRead=4
                 else:
                     if (tmpLine.startswith("*")):
                         # comment line: store in buffer
@@ -428,6 +466,16 @@ class Geometry():
                             regBuf="" # flush region def buffer
                         regBuf=tmpBuf+tmpLine
                         tmpBuf="" # flush buffer
+                    
+            elif (iRead==4):
+                # LATTICE cards
+                if (tmpLine.startswith("GEOEND")):
+                    tmpBuf="" # flush buffer
+                    iRead=0
+                elif (tmpLine.startswith("LATTICE")):
+                    # acquire card
+                    newGeom.lattice(tmpLine)
+                continue
                     
         ff.close()
         if (lBuffReg and iRead==3 and len(regBuf)>0):
@@ -502,7 +550,7 @@ class Geometry():
             ff.close()
             print("...done;")
         elif (what.upper().startswith("LAT")):
-            LatNames=self.ret("LAT","ALL")
+            LatNames,iLat=self.ret("LAT","ALL")
             if (len(LatNames)>0):
                 print("saving LATTICE cards in file %s ..."%(oFileName))
                 ff=open(oFileName,dMode)
@@ -749,9 +797,10 @@ class Geometry():
                 if (not lGeoDirs):
                     for myBod in self.bods:
                         myBod.traslate(dd=dd)
-                myDD=-dd
+                myDD=dd
                 if (isinstance(myDD,list)):
-                    myDD=np.array(DD)
+                    myDD=np.array(dd)
+                myDD=-myDD
                 ROTDEFIlist.append(RotDefi(myDD=myDD))
                 if (lWrapGeo): ROTDEFIlistINV.append(RotDefi(myDD=-myDD))
             if (len(ROTDEFIlist)>0):
@@ -1629,6 +1678,26 @@ class Geometry():
         reg2Bsliced.initCont(rCont=1)
         HiveGeo,GridGeo,mapping,mapType=MapContRegs(self,slicingGeo,lDebug=lDebug)
         # - return merged geo
+        return Geometry.MergeGeos(HiveGeo,GridGeo,mapping,mapType)
+
+    def insertGeoInGeo(self,geoToInsert,extName,regName,lDebug=True):
+        if (lDebug): print("inserting geometry...")
+        # - outer region of geometry to insert
+        myReg,iReg=geoToInsert.ret("Reg",extName)
+        if (myReg is None):
+            print("...region %s NOT found in geometry to insert!"%(extName))
+            exit(1)
+        else:
+            myReg.initCont(rCont=-1)
+        # - region of outer geometry where to insert geometry
+        myReg,iReg=self.ret("Reg",regName)
+        if (myReg is None):
+            print("...region %s NOT found in hosting geometry!"%(regName))
+            exit(1)
+        else:
+            myReg.initCont(rCont=1)
+        # - merge
+        HiveGeo,GridGeo,mapping,mapType=MapContRegs(self,geoToInsert,lDebug=lDebug)
         return Geometry.MergeGeos(HiveGeo,GridGeo,mapping,mapType)
 
 def acquireGeometries(fileNames,geoNames=None,lMakeRotatable=False):
