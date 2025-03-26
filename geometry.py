@@ -992,7 +992,7 @@ class Geometry():
         if (lDebug): print("re-sizing %d bodies..."%(len(bods2mod)))
         for bod2mod in bods2mod:
             whichBod,iBod=self.ret("bod",bod2mod)
-            whichBod.resize(newL)
+            whichBod.resize(newL,lDebug=lDebug)
         if (lDebug): print("...done;")
 
     def makeBodiesRotatable(self,lDebug=False,infL=1000.):
