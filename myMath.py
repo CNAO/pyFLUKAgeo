@@ -61,7 +61,7 @@ class Matrix:
             out[ii]=sum([ self[ii,kk]*myArr[kk] \
                               for kk in range(self.nDim)])
         if (lDebug):
-            print("Matrix.mulArr():",out)
+            print("Matrix.mulArr():",myArr,"-->",out)
         return out
 
     def mulSca(self,mySca):
