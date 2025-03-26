@@ -162,7 +162,7 @@ def TailNameInt(myString,maxLen=maxGeoNameLen,nDigits=2,addChar="_",lDebug=True)
         newName=myString[0:maxLen-nDigits]
         if (lDebug): print("TailNameInt(): chopping name %s to len(%s)==%d"%(myString,newName,len(newName)))
     elif (len(myString)<maxLen-nDigits):
-        newName=myString+addChar*(maxLen-nDigits-len(newName))
+        newName=myString+addChar*(maxLen-nDigits-len(myString))
         if (lDebug): print("TailNameInt(): extending name %s to len(%s)==%d"%(myString,newName,len(newName)))
     else:
         newName=myString
