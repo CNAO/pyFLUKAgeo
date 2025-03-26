@@ -269,6 +269,12 @@ class Body(GeoObject):
         if (myMat is not None):
             self.P=myMat.mulArr(self.P,lDebug=lDebug)
             self.V=myMat.mulArr(self.V,lDebug=lDebug)
+            # DIRTY PATCH TO ROTATE RPPs by 90degs and multiples:
+            if (self.bType=="RPP"):
+                for ii in range(3):
+                    if (self.V[ii]<0.0):
+                        self.P[ii]=self.P[ii]+self.V[ii]
+                        self.V[ii]=-self.V[ii]
         elif (myTheta is not None):
             if (myAxis is None):
                 print("you must specify a rotation axis together with an angle!")
@@ -279,10 +285,21 @@ class Body(GeoObject):
 
     def resize(self,newL,lDebug=False):
         if (self.bType=="RCC" or self.bType=="RPP"):
+           origCenter=self.retCenter()
+           orient=self.retOrient()
            if (lDebug):
                myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
-               print("...resizing body %s to L=%g"%(myStr,newL))
-           origCenter=self.retCenter()
-           self.V=self.retOrient()*newL
+               print("...resizing body %s to L=%g cm..."%(myStr,newL))
+               oldP=self.P
+               oldV=self.V
+           if (self.bType=="RCC"):
+               self.V=orient*newL
+           elif (self.bType=="RPP"):
+               self.V=self.V+(newL-np.dot(orient,self.V))*orient
            self.P=origCenter-self.V/2.
+           if (lDebug):
+               print("   ...center:",origCenter,"-->",self.retCenter())
+               print("   ...orientation:",orient,"-->",self.retOrient())
+               print("   ...self.P:",oldP,"-->",self.P)
+               print("   ...self.V:",oldV,"-->",self.V)
                 
