@@ -258,8 +258,11 @@ class Body(GeoObject):
             if (lDebug):
                 print("...converted body %s into an %s"%(myStr,self.bType))
 
-    def traslate(self,dd=None):
+    def traslate(self,dd=None,lDebug=False):
         if (dd is not None):
+            if (lDebug):
+                myStr="%-3s %8s"%(self.bType,self.echoName())
+                print("applying traslation array [%g,%g,%g] to body %s..."%(dd[0],dd[1],dd[2],myStr))
             self.P=self.P+dd
         else:
             print("please provide me with a 3D traslation array!")
@@ -267,6 +270,9 @@ class Body(GeoObject):
                 
     def rotate(self,myMat=None,myTheta=None,myAxis=3,lDegs=True,lDebug=False):
         if (myMat is not None):
+            if (lDebug):
+                myStr="%-3s %8s"%(self.bType,self.echoName())
+                print("applying rotation matrix to body %s..."%(myStr))
             self.P=myMat.mulArr(self.P,lDebug=lDebug)
             self.V=myMat.mulArr(self.V,lDebug=lDebug)
             # DIRTY PATCH TO ROTATE RPPs by 90degs and multiples:
@@ -280,6 +286,9 @@ class Body(GeoObject):
                 print("you must specify a rotation axis together with an angle!")
                 exit(1)
             else:
+                if (lDebug):
+                    myStr="%-3s %8s"%(self.bType,self.echoName())
+                    print("applying rotation by %g degs on axis %d to body %s..."%(myTheta,myAxis,myStr))
                 myMat=RotMat(myAng=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                 self.rotate(myMat=myMat,myTheta=None,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
 
@@ -288,7 +297,7 @@ class Body(GeoObject):
            origCenter=self.retCenter()
            orient=self.retOrient()
            if (lDebug):
-               myStr=GeoObject.echoComm(self)+"%-3s %8s"%(self.bType,self.echoName())
+               myStr="%-3s %8s"%(self.bType,self.echoName())
                print("...resizing body %s to L=%g cm..."%(myStr,newL))
                oldP=self.P
                oldV=self.V

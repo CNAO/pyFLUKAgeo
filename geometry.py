@@ -11,6 +11,7 @@ from region import Region
 from transformation import RotDefi, Transformation
 from scorings import Usrbin, Usryield, Usrbdx, Usrtrack, Usrcoll
 from FLUKA import HighLightComment, TailNameInt
+from myMath import RotMat
 
 class Geometry():
     '''
@@ -787,8 +788,9 @@ class Geometry():
                     print("...applying rotation by %f degs around axis %d..."%\
                           (myTheta,myAxis))
                     if (not lGeoDirs):
+                        myMat=RotMat(myAng=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                         for myBod in self.bods:
-                            myBod.rotate(myMat=None,myTheta=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
+                            myBod.rotate(myMat=myMat,myTheta=None,myAxis=None,lDegs=lDegs,lDebug=lDebug)
                     ROTDEFIlist.append(RotDefi(myAx=myAxis,myTh=myTheta))
                     if (lWrapGeo): ROTDEFIlistINV.append(RotDefi(myAx=myAxis,myTh=-myTheta))
             if (dd is not None):
@@ -796,14 +798,17 @@ class Geometry():
                       (dd[0],dd[1],dd[2]))
                 if (not lGeoDirs):
                     for myBod in self.bods:
-                        myBod.traslate(dd=dd)
+                        myBod.traslate(dd=dd,lDebug=lDebug)
                 myDD=dd
                 if (isinstance(myDD,list)):
                     myDD=np.array(dd)
-                myDD=-myDD
-                ROTDEFIlist.append(RotDefi(myDD=myDD))
-                if (lWrapGeo): ROTDEFIlistINV.append(RotDefi(myDD=-myDD))
+                ROTDEFIlist.append(RotDefi(myDD=-myDD))
+                if (lWrapGeo): ROTDEFIlistINV.append(RotDefi(myDD=myDD))
             if (len(ROTDEFIlist)>0):
+                if (lDebug):
+                    print("...final list of ROT-DEFI cards (as in memory):")
+                    for tmpRotDefi in ROTDEFIlist:
+                        print(tmpRotDefi.echo(myID=1,myName="ignore_myName_myIndex"))
                 # add transformation:
 
                 # bodies
@@ -827,7 +832,7 @@ class Geometry():
                     for myTrasName in tTrasfs:
                         if (lDebug): print("...updating BODY %s ROT-DEFI cards..."%(myTrasName))
                         myTras,iEntry=self.ret("transf",myTrasName)
-                        myTras.AddRotDefis(reversed(deepcopy(ROTDEFIlist)),iAdd=0)
+                        myTras.AddRotDefis(deepcopy(ROTDEFIlist),iAdd=0)
                     # add comment, in case
                     if (lCreate and myComment is not None):
                         myEntry,iEntry=self.ret("TRANSF",Tname)
@@ -854,7 +859,7 @@ class Geometry():
                 for myTrasName in tTrasfs:
                     if (lDebug): print("...updating LATTICE %s ROT-DEFI cards..."%(myTrasName))
                     myTras,iEntry=self.ret("transf",myTrasName)
-                    myTras.AddRotDefis(reversed(deepcopy(ROTDEFIlist)),iAdd=0)
+                    myTras.AddRotDefis(deepcopy(ROTDEFIlist),iAdd=0)
                     if (lWrapGeo):
                         if (lDebug): print("    ...wrapped!")
                         myTras.AddRotDefis(reversed(deepcopy(ROTDEFIlistINV)),iAdd=-1)
@@ -889,7 +894,7 @@ class Geometry():
                     for myTrasName in tTrasfs:
                         if (lDebug): print("...updating USRBIN %s ROT-DEFI cards..."%(myTrasName))
                         myTras,iEntry=self.ret("transf",myTrasName)
-                        myTras.AddRotDefis(reversed(deepcopy(ROTDEFIlist)),iAdd=0)
+                        myTras.AddRotDefis(deepcopy(ROTDEFIlist),iAdd=0)
                     # add comment, in case
                     if (lCreate and myComment is not None):
                         myEntry,iEntry=self.ret("TRANSF",Tname)
