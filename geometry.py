@@ -1045,7 +1045,7 @@ class Geometry():
         for myBod in self.bods:
             myBod.makeUNrotatable(lDebug=lDebug,infL=infL)
 
-    def reAssiginBINunits(self,nMaxBins=None,nBINs=None,usedUnits=None,lDebug=False):
+    def reAssiginBINunits(self,nMaxBins=None,nBINs=None,usedUnits=None,lDebug=False,iUnitStart=21):
         if (lDebug): print("re-assigning USRBIN/EVENTBIN units...")
         if (nMaxBins is not None and nBINs is not None):
             print("Please tell me if I have to re-assign USRBIN/EVENTBIN units based on:")
@@ -1060,7 +1060,7 @@ class Geometry():
             print("...%d original units:"%(len(uniqueUnits)),uniqueUnits)
             if (len(usedUnits)>0):
                 print("...units NOT to be used:",usedUnits)
-        currUnits=[21+ii for ii in range(len(uniqueUnits))]
+        currUnits=[iUnitStart+ii for ii in range(len(uniqueUnits))]
         for ii in range(len(currUnits)):
             while (currUnits[ii] in [abs(iu) for iu in usedUnits]):
                 currUnits[ii]=currUnits[ii]+1
