@@ -2,6 +2,8 @@
 # A. Mereghetti, 2024/04/16
 # python version: >= 3.8.10
 
+from math import log10
+
 StringPrec=2.0E-13 # prec in determining integer values
 MaxLineLength=132
 LineHeader="%13s"%("")
@@ -9,7 +11,7 @@ begLineGLOB="* \n"+"* "+"="*(MaxLineLength-2)
 endLineGLOB="* "+"-"*(MaxLineLength-2)+"\n* "
 maxGeoNameLen=8
 # FREE format:
-cut0sFREE="0"*4
+cut0sFREE="0"*5
 expDigitsFREE=22
 numDigitsFREE=expDigitsFREE-7
 # FIXED format:
@@ -80,41 +82,63 @@ def echoFloats(myFloats,expDigits=None,numDigits=None,prec=StringPrec,cut0s=None
     for float2convert in floats2convert:
         if (abs(float2convert)%1<prec): # integer
             myStr="% .1f"%(float2convert)
-        else: # actual floating point number
-            myStr=numFmt%(float2convert)
-            data=myStr.split("E")
-            mantissa=data[0]; exponent=data[1]
-            if (cut0s is not None): # truncate numbers if a series of "0" is found
-                if (mantissa.find(cut0s)>-1):
-                    mantissa=mantissa[:mantissa.index(cut0s)]
-            if (exponent=="+00"):
-                exponent=None
-            elif (exponent=="+01"):
-                exponent=None
-                mantissa=mantissa.replace(".","")
-                mantissa=mantissa[0:3]+"."+mantissa[3:]
-            elif (exponent=="+02"):
-                exponent=None
-                mantissa=mantissa.replace(".","")
-                mantissa=mantissa[0:4]+"."+mantissa[4:]
-            elif (exponent=="-01"):
-                exponent=None
-                mantissa=mantissa.replace(".","")
-                mantissa=mantissa[0]+"0."+mantissa[1:]
-            elif (exponent=="-02"):
-                exponent=None
-                mantissa=mantissa.replace(".","")
-                mantissa=mantissa[0]+"0.0"+mantissa[1:]
-            if (mantissa=="-0.0"): mantissa=" 0.0"
-            if (exponent is None):
-                myStr=mantissa
-            else:
-                myStr="%sE%s"%(mantissa,exponent)
-        if (not lFree):
-            if (len(myStr)<expDigits):
-                myStr=" "*(expDigits-len(myStr))+myStr
+        elif (lFree):
+            myStr=echoFloatFREE(float2convert)
+        else:
+            myStr=echoFloatFIXED(float2convert)
         myStrs.append(myStr)
     return myStrs
+
+def echoFloatFREE(float2convert,expDigits=expDigitsFREE,numDigits=numDigitsFREE,cut0s=cut0sFREE):
+    numFmt="%% %d.%dE"%(expDigits,numDigits)
+    myStr=numFmt%(float2convert)
+    data=myStr.split("E")
+    mantissa=data[0]; exponent=data[1]
+    if (cut0s is not None): # truncate numbers if a series of "0" is found
+        if (mantissa.find(cut0s)>-1):
+            mantissa=mantissa[:mantissa.index(cut0s)]
+    if (exponent=="+00"):
+        exponent=None
+    elif (exponent=="+01"):
+        exponent=None
+        mantissa=mantissa.replace(".","")
+        mantissa=mantissa[0:3]+"."+mantissa[3:]
+    elif (exponent=="+02"):
+        exponent=None
+        mantissa=mantissa.replace(".","")
+        mantissa=mantissa[0:4]+"."+mantissa[4:]
+    elif (exponent=="-01"):
+        exponent=None
+        mantissa=mantissa.replace(".","")
+        mantissa=mantissa[0]+"0."+mantissa[1:]
+    elif (exponent=="-02"):
+        exponent=None
+        mantissa=mantissa.replace(".","")
+        mantissa=mantissa[0]+"0.0"+mantissa[1:]
+    if (mantissa=="-0.0"): mantissa=" 0.0"
+    if (exponent is None):
+        myStr=mantissa
+    else:
+        myStr="%sE%s"%(mantissa,exponent)
+    return myStr
+
+def echoFloatFIXED(float2convert,expDigits=expDigitsFIXED,numDigits=numDigitsFIXED,cut0s=cut0sFIXED):
+    myAbs=abs(float2convert)
+    if(myAbs<=1E-4 or myAbs>=1E8):
+        # -0.0001234 can be written as -1.234E-04
+        # -1234567.8 can be written as -1.235E+07
+        numFmt="%% %d.%dE"%(expDigits,numDigits)
+        myStr=numFmt%(float2convert)
+    else:
+        expo=int(log10(myAbs))
+        if (expo<=0):
+            # exponent<=0: use as many decimals as possibile!
+            numFmt="%% 10.%df"%(expDigits-3)
+        else:
+            # exponent>0: truncate decimals
+            numFmt="%% 10.%df"%(expDigits-3-expo)
+        myStr=numFmt%(float2convert)
+    return myStr
 
 def assembleLine(myStrings,maxLen=MaxLineLength,header=LineHeader,lMultiLine=True):
     'function for assembling a FLUKA line made of myStrings respecting all FLUKA constraits'
