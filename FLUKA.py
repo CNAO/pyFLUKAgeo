@@ -82,6 +82,8 @@ def echoFloats(myFloats,expDigits=None,numDigits=None,prec=StringPrec,cut0s=None
     for float2convert in floats2convert:
         if (abs(float2convert)%1<prec): # integer
             myStr="% .1f"%(float2convert)
+            if (len(myStr)<expDigits and not lFree):
+                myStr=" "*(expDigits-len(myStr))+myStr
         elif (lFree):
             myStr=echoFloatFREE(float2convert)
         else:
