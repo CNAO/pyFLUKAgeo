@@ -322,7 +322,7 @@ class Geometry():
         return myEntry, iEntry
 
     @staticmethod
-    def fromInp(myInpName,iRead=0,newGeom=None):
+    def fromInp(myInpName,iRead=0,newGeom=None,parseFlags=None):
         '''
         FREE format used only for parsing ROT-DEFI cards (blank space as separator)!
         '''
@@ -333,7 +333,10 @@ class Geometry():
         nBins=len(newGeom.bins)
         nTras=len(newGeom.tras)
         nScos=len(newGeom.scos)
-        defineFlags=[]
+        if (parseFlags is None):
+            defineFlags=[] # use active #define vars as found while parsing
+        else:
+            defineFlags=parseFlags # use #define vars specified at interface
         print("parsing file %s ..."%(myInpName))
         ff=open(myInpName,'r')
         lFree=False
@@ -346,13 +349,14 @@ class Geometry():
 
             # PRE-PROCESSOR
             if (tmpLine.startswith("#define")):
-                data=tmpLine.split()
-                if (len(data)>2):
-                    print("...cannot handle define vars with numerical value, only booleans!")
-                    print(tmpLine)
-                    exit(1)
-                if (data[1] not in defineFlags):
-                    defineFlags.append(data[1])
+                if ( parseFlags is None ):
+                    data=tmpLine.split()
+                    if (len(data)>2):
+                        print("...cannot handle define vars with numerical value, only booleans!")
+                        print(tmpLine)
+                        exit(1)
+                    if (data[1] not in defineFlags):
+                        defineFlags.append(data[1])
                 continue
             elif (tmpLine.startswith("#if")):
                 data=tmpLine.split()
