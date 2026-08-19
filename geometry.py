@@ -801,14 +801,16 @@ class Geometry():
                         self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lGeoDirs=lGeoDirs,\
                                            lOnlyGeo=lOnlyGeo,lWrapGeo=lWrapGeo,lDebug=lDebug)
                 elif (myTheta!=0.0):
-                    print("...applying rotation by %f degs around axis %d..."%\
-                          (myTheta,myAxis))
+                    myUnit="degs"
+                    if (not lDegs): myUnit="rad"
+                    print("...applying rotation by %f %s around axis %d..."%\
+                          (myTheta,myUnit,myAxis))
                     if (not lGeoDirs):
                         myMat=RotMat(myAng=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                         for myBod in self.bods:
                             myBod.rotate(myMat=myMat,myTheta=None,myAxis=None,lDegs=lDegs,lDebug=lDebug)
-                    ROTDEFIlist.append(RotDefi(myAx=myAxis,myTh=myTheta))
-                    if (lWrapGeo): ROTDEFIlistINV.append(RotDefi(myAx=myAxis,myTh=-myTheta))
+                    ROTDEFIlist.append(RotDefi(myAx=myAxis,myTh=myTheta,lDegs=lDegs))
+                    if (lWrapGeo): ROTDEFIlistINV.append(RotDefi(myAx=myAxis,myTh=-myTheta,lDegs=lDegs))
             if (dd is not None):
                 print("...applying traslation array [%f,%f,%f] cm..."%\
                       (dd[0],dd[1],dd[2]))
