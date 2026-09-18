@@ -263,7 +263,7 @@ class Geometry():
                     if (myEntry.echoName()==myValue):
                         lFound=True
                         break
-        elif (myKey.upper().startswith("SCO") or myKey.upper().startswith("SCORING")):
+        elif (myKey.upper().startswith("SCO")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ mySco.echoName() for mySco in self.scos ]
                 iEntry=[ ii for ii in range(len(self.scos)) ]
@@ -276,7 +276,7 @@ class Geometry():
         elif (myKey.upper().startswith("USRYIELD")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ mySco.echoName() for mySco in self.scos if isinstance(mySco,Usryield) ]
-                iEntry=[ ii for ii in range(len(self.scos)) ]
+                iEntry=[ ii for ii in range(len(self.scos)) if isinstance(self.scos[ii],Usryield) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.scos):
@@ -286,7 +286,7 @@ class Geometry():
         elif (myKey.upper().startswith("USRBDX")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ mySco.echoName() for mySco in self.scos if isinstance(mySco,Usrbdx) ]
-                iEntry=[ ii for ii in range(len(self.scos)) ]
+                iEntry=[ ii for ii in range(len(self.scos)) if isinstance(self.scos[ii],Usrbdx) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.scos):
@@ -296,7 +296,7 @@ class Geometry():
         elif (myKey.upper().startswith("USRTRACK")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ mySco.echoName() for mySco in self.scos if isinstance(mySco,Usrtrack) ]
-                iEntry=[ ii for ii in range(len(self.scos)) ]
+                iEntry=[ ii for ii in range(len(self.scos)) if isinstance(self.scos[ii],Usrtrack) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.scos):
@@ -306,7 +306,7 @@ class Geometry():
         elif (myKey.upper().startswith("USRCOLL")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ mySco.echoName() for mySco in self.scos if isinstance(mySco,Usrcoll) ]
-                iEntry=[ ii for ii in range(len(self.scos)) ]
+                iEntry=[ ii for ii in range(len(self.scos)) if isinstance(self.scos[ii],Usrcoll) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.scos):
