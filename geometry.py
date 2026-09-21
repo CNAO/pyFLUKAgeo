@@ -9,7 +9,7 @@ import grid
 from body import Body
 from region import Region
 from transformation import RotDefi, Transformation
-from scorings import Usrbin, Usryield, Usrbdx, Usrtrack, Usrcoll
+from scorings import Usrbin, Eventbin, Usryield, Usrbdx, Usrtrack, Usrcoll
 from FLUKA import HighLightComment, TailNameInt
 from myMath import RotMat
 
@@ -37,7 +37,7 @@ class Geometry():
         self.bods=[]
         self.regs=[]
         self.tras=[]
-        self.bins=[] # USRBINs
+        self.bins=[] # USRBINs,EVENTBINs
         self.scos=[] # other scoring cards (reg-based)
         self.title=""
 
@@ -51,7 +51,7 @@ class Geometry():
             self.regs.append(tmpEl)
         elif (what.upper().startswith("TRAS") or what.upper().startswith("TRANSF")):
             self.tras.append(tmpEl)
-        elif (what.upper().startswith("BIN") or what.upper().startswith("USRBIN")):
+        elif (what.upper().startswith("BIN") or what.upper().startswith("USRBIN") or what.upper().startswith("EVENTBIN")):
             self.bins.append(tmpEl)
         elif (what.upper().startswith("SCO") or what.upper().startswith("SCORING")):
             self.scos.append(tmpEl)
@@ -218,7 +218,7 @@ class Geometry():
                 else:
                     print("cannot find body named %s!"%(myValue))
                     exit(1)
-        elif (myKey.upper().startswith("TRANSFLINKEDTOUSRBIN")):
+        elif (myKey.upper().startswith("TRANSFLINKEDTBIN")):
             if (myValue.upper()=="ALL"):
                 myEntry=list(set([ mbin.retTransformName() for mbin in self.bins if mbin.isLinkedToTransform() ])) # unique entries!
                 iEntry=[]
@@ -227,13 +227,13 @@ class Geometry():
                     iEntry.append(iE)
                 lFound=True
             else:
-                mE,iE=self.ret("usrbin",myValue)
+                mE,iE=self.ret("bin",myValue)
                 if (mE is not None):
                     if (mE.isLinkedToTransform()):
                         myEntry,iEntry=self.ret("transf",mE.retTransformName())
                         lFound=myEntry is None
                 else:
-                    print("cannot find USRBIN named %s!"%(myValue))
+                    print("cannot find BINNING named %s!"%(myValue))
                     exit(1)
         elif (myKey.upper().startswith("TRANSF")):
             if (myValue.upper()=="ALL"):
@@ -245,7 +245,7 @@ class Geometry():
                     if (myEntry.echoName()==myValue):
                         lFound=True
                         break
-        elif (myKey.upper().startswith("BININUNIT") or myKey.upper().startswith("USRBININUNIT")):
+        elif (myKey.upper().startswith("BININUNIT") or myKey.upper().startswith("USRBININUNIT") or myKey.upper().startswith("EVENTBININUNIT")):
             myEntry=[] ; iEntry=[]
             if (isinstance(myValue,float) or isinstance(myValue,int)): myValue=[myValue]
             for ii,myBin in enumerate(self.bins):
@@ -253,7 +253,7 @@ class Geometry():
                     myEntry.append(myBin.echoName())
                     iEntry.append(ii)
                     lFound=True
-        elif (myKey.upper().startswith("BIN") or myKey.upper().startswith("USRBIN")):
+        elif (myKey.upper().startswith("BIN") or myKey.upper().startswith("USRBIN") or myKey.upper().startswith("EVENTBIN")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ myBin.echoName() for myBin in self.bins ]
                 iEntry=[ ii for ii in range(len(self.bins)) ]
@@ -263,7 +263,7 @@ class Geometry():
                     if (myEntry.echoName()==myValue):
                         lFound=True
                         break
-        elif (myKey.upper().startswith("SCO") or myKey.upper().startswith("SCORING")):
+        elif (myKey.upper().startswith("SCO")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ mySco.echoName() for mySco in self.scos ]
                 iEntry=[ ii for ii in range(len(self.scos)) ]
@@ -276,7 +276,7 @@ class Geometry():
         elif (myKey.upper().startswith("USRYIELD")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ mySco.echoName() for mySco in self.scos if isinstance(mySco,Usryield) ]
-                iEntry=[ ii for ii in range(len(self.scos)) ]
+                iEntry=[ ii for ii in range(len(self.scos)) if isinstance(self.scos[ii],Usryield) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.scos):
@@ -286,7 +286,7 @@ class Geometry():
         elif (myKey.upper().startswith("USRBDX")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ mySco.echoName() for mySco in self.scos if isinstance(mySco,Usrbdx) ]
-                iEntry=[ ii for ii in range(len(self.scos)) ]
+                iEntry=[ ii for ii in range(len(self.scos)) if isinstance(self.scos[ii],Usrbdx) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.scos):
@@ -296,7 +296,7 @@ class Geometry():
         elif (myKey.upper().startswith("USRTRACK")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ mySco.echoName() for mySco in self.scos if isinstance(mySco,Usrtrack) ]
-                iEntry=[ ii for ii in range(len(self.scos)) ]
+                iEntry=[ ii for ii in range(len(self.scos)) if isinstance(self.scos[ii],Usrtrack) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.scos):
@@ -306,7 +306,7 @@ class Geometry():
         elif (myKey.upper().startswith("USRCOLL")):
             if (myValue.upper()=="ALL"):
                 myEntry=[ mySco.echoName() for mySco in self.scos if isinstance(mySco,Usrcoll) ]
-                iEntry=[ ii for ii in range(len(self.scos)) ]
+                iEntry=[ ii for ii in range(len(self.scos)) if isinstance(self.scos[ii],Usrcoll) ]
                 lFound=True
             else:
                 for iEntry,myEntry in enumerate(self.scos):
@@ -322,7 +322,7 @@ class Geometry():
         return myEntry, iEntry
 
     @staticmethod
-    def fromInp(myInpName,iRead=0,newGeom=None):
+    def fromInp(myInpName,iRead=0,newGeom=None,parseFlags=None):
         '''
         FREE format used only for parsing ROT-DEFI cards (blank space as separator)!
         '''
@@ -333,7 +333,10 @@ class Geometry():
         nBins=len(newGeom.bins)
         nTras=len(newGeom.tras)
         nScos=len(newGeom.scos)
-        defineFlags=[]
+        if (parseFlags is None):
+            defineFlags=[] # use active #define vars as found while parsing
+        else:
+            defineFlags=parseFlags # use #define vars specified at interface
         print("parsing file %s ..."%(myInpName))
         ff=open(myInpName,'r')
         lFree=False
@@ -346,13 +349,14 @@ class Geometry():
 
             # PRE-PROCESSOR
             if (tmpLine.startswith("#define")):
-                data=tmpLine.split()
-                if (len(data)>2):
-                    print("...cannot handle define vars with numerical value, only booleans!")
-                    print(tmpLine)
-                    exit(1)
-                if (data[1] not in defineFlags):
-                    defineFlags.append(data[1])
+                if ( parseFlags is None ):
+                    data=tmpLine.split()
+                    if (len(data)>2):
+                        print("...cannot handle define vars with numerical value, only booleans!")
+                        print(tmpLine)
+                        exit(1)
+                    if (data[1] not in defineFlags):
+                        defineFlags.append(data[1])
                 continue
             elif (tmpLine.startswith("#if")):
                 data=tmpLine.split()
@@ -394,6 +398,11 @@ class Geometry():
                     tmpBuf=tmpBuf+tmpLine
                     if(tmpLine.strip().endswith("&")):
                        newGeom.add(Usrbin.fromBuf(tmpBuf.strip()),what="BIN")
+                       tmpBuf="" # flush buffer
+                elif (tmpLine.startswith("EVENTBIN")):
+                    tmpBuf=tmpBuf+tmpLine
+                    if(tmpLine.strip().endswith("&")):
+                       newGeom.add(Eventbin.fromBuf(tmpBuf.strip()),what="BIN")
                        tmpBuf="" # flush buffer
                 elif (tmpLine.startswith("USRYIELD")):
                     tmpBuf=tmpBuf+tmpLine
@@ -497,7 +506,7 @@ class Geometry():
         if (len(newGeom.regs)-nRegs>0):
             print("...acquired %d regions;"%(len(newGeom.regs)-nRegs))
         if (len(newGeom.bins)-nBins>0):
-            print("...acquired %d USRBIN(s);"%(len(newGeom.bins)-nBins))
+            print("...acquired %d USR/EVENTBIN(s);"%(len(newGeom.bins)-nBins))
         if (len(newGeom.scos)-nScos>0):
             print("...acquired %d region-based scoring(s);"%(len(newGeom.scos)-nScos))
         if (len(newGeom.tras)-nTras>0):
@@ -590,7 +599,7 @@ class Geometry():
             ff.close()
             print("...done;")
         elif (what.upper().startswith("BIN")):
-            print("saving USRBINs in file %s ..."%(oFileName))
+            print("saving USR/EVENTBINs in file %s ..."%(oFileName))
             ff=open(oFileName,dMode)
             ff.write("* \n")
             for tmpBin in self.bins:
@@ -729,7 +738,7 @@ class Geometry():
         else:
             # do not copy USRBINs and remove uselss transformations
             allTrasfNames,iEntry=myGeo.ret("TRANSF","ALL")
-            binTrasfNames,iEntry=myGeo.ret("TRANSFLINKEDTOUSRBIN","ALL")
+            binTrasfNames,iEntry=myGeo.ret("TRANSFLINKEDTBIN","ALL")
             for iT,myT in reversed(list(enumerate(allTrasfNames))):
                 if (myT in binTrasfNames):
                     myTras.pop(iT)
@@ -761,7 +770,7 @@ class Geometry():
                     if false, the transformation is applied to bodies by modifying their definitions;
         * lOnlyGeo: if true, the current transformation is applied only to bodies and to transformations
                       linked to LATTICE regions; if false, the current transformation is applied also
-                      to the USRBIN cards;
+                      to the USR/EVENTBIN cards;
         * lWrapGeo: if true, the current transformation is wrapped around existing transformations
                       for LATTICE regions; this is necessary when the PROTOTYPE of a LATTICE
                       region is already part of the gridded geometry, and the gridded is being moved;
@@ -792,14 +801,16 @@ class Geometry():
                         self.solidTrasform(myTheta=myT,myAxis=myAx,lDegs=lDegs,lGeoDirs=lGeoDirs,\
                                            lOnlyGeo=lOnlyGeo,lWrapGeo=lWrapGeo,lDebug=lDebug)
                 elif (myTheta!=0.0):
-                    print("...applying rotation by %f degs around axis %d..."%\
-                          (myTheta,myAxis))
+                    myUnit="degs"
+                    if (not lDegs): myUnit="rad"
+                    print("...applying rotation by %f %s around axis %d..."%\
+                          (myTheta,myUnit,myAxis))
                     if (not lGeoDirs):
                         myMat=RotMat(myAng=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                         for myBod in self.bods:
                             myBod.rotate(myMat=myMat,myTheta=None,myAxis=None,lDegs=lDegs,lDebug=lDebug)
-                    ROTDEFIlist.append(RotDefi(myAx=myAxis,myTh=myTheta))
-                    if (lWrapGeo): ROTDEFIlistINV.append(RotDefi(myAx=myAxis,myTh=-myTheta))
+                    ROTDEFIlist.append(RotDefi(myAx=myAxis,myTh=myTheta,lDegs=lDegs))
+                    if (lWrapGeo): ROTDEFIlistINV.append(RotDefi(myAx=myAxis,myTh=-myTheta,lDegs=lDegs))
             if (dd is not None):
                 print("...applying traslation array [%f,%f,%f] cm..."%\
                       (dd[0],dd[1],dd[2]))
@@ -875,7 +886,7 @@ class Geometry():
                     myEntry,iEntry=self.ret("TRANSF",Tname)
                     myEntry.headMe(myComment)
                 
-                # USRBIN part
+                # USR/EVENTBIN part
                 if (not lOnlyGeo):
                     lCreate=False; Tname="%s_bin"%(myName); tTrasfs=[]
                     lTraslOnly=(dd is not None and myMat is None and myTheta is None)
@@ -895,11 +906,11 @@ class Geometry():
                         myEntry,iEntry=self.ret("TRANSF",Tname)
                         if (myEntry is None):
                             tTrasfs.append(Tname)
-                            print("...adding the transformation %s to (existing) list of transformations - USRBIN part..."%(Tname))
+                            print("...adding the transformation %s to (existing) list of transformations - USR/EVENTBIN part..."%(Tname))
                             self.add(Transformation(myID=len(self.tras)+1,myName=Tname),what="tras")
                     # append current transformation to existing ones
                     for myTrasName in tTrasfs:
-                        if (lDebug): print("...updating USRBIN %s ROT-DEFI cards..."%(myTrasName))
+                        if (lDebug): print("...updating USR/EVENTBIN %s ROT-DEFI cards..."%(myTrasName))
                         myTras,iEntry=self.ret("transf",myTrasName)
                         myTras.AddRotDefis(deepcopy(ROTDEFIlist),iAdd=0)
                     # add comment, in case
@@ -959,7 +970,7 @@ class Geometry():
                     print("cannot find transformation named %s!"%(trName))
                     exit(1)
             else:
-                print("Geometry.rename(): USRBIN %s with no associated transformation..."%(myBin.echoName()))
+                print("Geometry.rename(): USR/EVENTBIN %s with no associated transformation..."%(myBin.echoName()))
             myCurrName=myBin.echoName()
             if (exceptions is not None):
                 if ( "bins" in exceptions ):
@@ -1040,12 +1051,12 @@ class Geometry():
         for myBod in self.bods:
             myBod.makeUNrotatable(lDebug=lDebug,infL=infL)
 
-    def reAssiginUSRBINunits(self,nMaxBins=None,nUSRBINs=None,usedUnits=None,lDebug=False):
-        if (lDebug): print("re-assigning USRBIN units...")
-        if (nMaxBins is not None and nUSRBINs is not None):
-            print("Please tell me if I have to re-assign USRBIN units based on:")
+    def reAssiginBINunits(self,nMaxBins=None,nBINs=None,usedUnits=None,lDebug=False,iUnitStart=21):
+        if (lDebug): print("re-assigning USRBIN/EVENTBIN units...")
+        if (nMaxBins is not None and nBINs is not None):
+            print("Please tell me if I have to re-assign USRBIN/EVENTBIN units based on:")
             print("- max number of bins in a unit;")
-            print("- max number of USRBINs in a unit;")
+            print("- max number of USRBIN/EVENTBINs in a unit;")
             exit(1)
         if (usedUnits is None): usedUnits=[]
         if (type(usedUnits) is not list): usedUnits=[usedUnits]
@@ -1055,7 +1066,7 @@ class Geometry():
             print("...%d original units:"%(len(uniqueUnits)),uniqueUnits)
             if (len(usedUnits)>0):
                 print("...units NOT to be used:",usedUnits)
-        currUnits=[21+ii for ii in range(len(uniqueUnits))]
+        currUnits=[iUnitStart+ii for ii in range(len(uniqueUnits))]
         for ii in range(len(currUnits)):
             while (currUnits[ii] in [abs(iu) for iu in usedUnits]):
                 currUnits[ii]=currUnits[ii]+1
@@ -1065,12 +1076,12 @@ class Geometry():
         myN=[ 0 for ii in range(len(currUnits)) ]
         if (nMaxBins is not None):
             nMax=nMaxBins
-        elif(nUSRBINs is not None):
-            nMax=nUSRBINs
+        elif(nBINs is not None):
+            nMax=nBINs
         else:
-            print("Please tell me if I have to re-assign USRBIN units based on:")
+            print("Please tell me if I have to re-assign USRBIN/EVENTBIN units based on:")
             print("- max number of bins in a unit;")
-            print("- max number of USRBINs in a unit;")
+            print("- max number of USRBIN/EVENTBINs in a unit;")
             exit(1)
         if (isinstance(nMax,int) or isinstance(nMax,float)):
             nMax=[nMax for ii in range(len(uniqueUnits))]
@@ -1079,7 +1090,7 @@ class Geometry():
             iUnit=uniqueUnits.index(myBin.getUnit())
             if (nMaxBins is not None):
                 nAdd=myBin.getNbins()
-            elif(nUSRBINs is not None):
+            elif(nBINs is not None):
                 nAdd=1
             if (myN[iUnit]+nAdd>nMax[iUnit]):
                 myUnit=currUnits[iUnit]
@@ -1099,38 +1110,38 @@ class Geometry():
             print("...old unit: %d - new units:"%(uniqueUnits[iUnit]),newUnits[iUnit])
         if (lDebug): print("...done;")
 
-    def resizeUsrbins(self,newL,whichBins=None,axis=3,lDebug=False):
+    def resizeBins(self,newL,whichBins=None,axis=3,lDebug=False):
         '''
         input:
         - newL: new length [cm];
-        - whichBins: unit(s)/name(s) of USRBINs to be updated;
+        - whichBins: unit(s)/name(s) of USRBIN/EVENTBINs to be updated;
         '''
-        if (lDebug): print("resizing USRBINs...")
+        if (lDebug): print("resizing USRBIN/EVENTBINs...")
         if (whichBins is None): whichBins="ALL"
         if (isinstance(whichBins,str)):
             if (whichBins.upper()=="ALL"):
                 bins2mod,iBins2mod=self.ret("bin","ALL") # returns a list of names and a list of scalars
-                if (lDebug): print("...re-sizing ALL USRBINs, i.e. %d ..."%(len(bins2mod)))
+                if (lDebug): print("...re-sizing ALL USRBIN/EVENTBINs, i.e. %d ..."%(len(bins2mod)))
             else:
                 bins2mod=[whichBins]
         elif (isinstance(whichBins,float) or isinstance(whichBins,int)):
             bins2mod,iBins2mod=self.ret("BININUNIT",whichBins) # returns a list of names and a list of scalars
-            if (lDebug): print("re-sizing USRBINs in unit %d, i.e. %d ..."%(whichBins,len(bins2mod)))
+            if (lDebug): print("re-sizing USRBIN/EVENTBINs in unit %d, i.e. %d ..."%(whichBins,len(bins2mod)))
         elif (isinstance(whichBins,list)):
             bins2mod=[]; iBins2mod=[]
             for whichBin in whichBins:
                 if (isinstance(whichBin,float) or isinstance(whichBin,int)):
                     tBins2mod,tIBins2mod=self.ret("BININUNIT",whichBin)
-                    print("re-sizing USRBINs in unit %d, i.e. %d ..."%(whichBin,len(tBins2mod)))
+                    print("re-sizing USRBIN/EVENTBINs in unit %d, i.e. %d ..."%(whichBin,len(tBins2mod)))
                     if (isinstance(tBins2mod,list)):
                         bins2mod=bins2mod+tBins2mod
                     else:
                         bins2mod.append(tBins2mod)
                 elif (isinstance(whichBin,str)):
-                    print("re-sizing %s USRBIN..."%(whichBin))
+                    print("re-sizing %s USRBIN/EVENTBIN..."%(whichBin))
                     bins2mod.append(whichBin)
         else:
-            print("Geometry.resizeUsrbins(): Wrong indication of USRBINs for resizing!")
+            print("Geometry.resizeBins(): Wrong indication of USRBIN/EVENTBINs for resizing!")
             print(whichBins)
             exit(1)
         if (bins2mod is not None):
@@ -1140,33 +1151,33 @@ class Geometry():
                 if (lDebug): print(whichBin.echo())
         if (lDebug): print("...done;")
 
-    def moveUsrbins(self,myCoord,axes=3,whichBins=None,lAbs=True,lDebug=False):
-        if (lDebug): print("moving USRBINs by",myCoord,"along axes",axes)
+    def moveBins(self,myCoord,axes=3,whichBins=None,lAbs=True,lDebug=False):
+        if (lDebug): print("moving USRBIN/EVENTBINs by",myCoord,"along axes",axes)
         if (whichBins is None): whichBins="ALL"
         if (isinstance(whichBins,str)):
             if (whichBins.upper()=="ALL"):
                 bins2mod,iBins2mod=self.ret("bin","ALL")
-                if (lDebug): print("...moving ALL USRBINs, i.e. %d ..."%(len(bins2mod)))
+                if (lDebug): print("...moving ALL USRBIN/EVENTBINs, i.e. %d ..."%(len(bins2mod)))
             else:
-                print("Geometry.moveUsrbins(): Cannot specify USRBIN names for moving!")
+                print("Geometry.moveBins(): Cannot specify USRBIN/EVENTBIN names for moving!")
                 exit(1)
         elif (isinstance(whichBins,list)):
             bins2mod=[]; iBins2mod=[]
             for whichBin in whichBins:
                 tBins2mod,tIBins2mod=self.ret("BIN",whichBin)
                 if (tBins2mod is None):
-                    print("Geometry.moveUsrbins(): Cannot find USRBIN named %s!"%(whichBin))
+                    print("Geometry.moveBins(): Cannot find USRBIN/EVENTBIN named %s!"%(whichBin))
                     exit(1)
                 if (isinstance(tBins2mod,list)):
                     bins2mod=bins2mod+tBins2mod
                     iBins2mod=iBins2mod+tIBins2mod
-                    print("moving %d USRBINs named %s ..."%(len(tBins2mod),whichBin))
+                    print("moving %d USRBIN/EVENTBINs named %s ..."%(len(tBins2mod),whichBin))
                 else:
                     bins2mod.append(tBins2mod)
                     iBins2mod.append(tIBins2mod)
-                    print("moving USRBIN named %s ..."%(whichBin))
+                    print("moving USRBIN/EVENTBIN named %s ..."%(whichBin))
         else:
-            print("Geometry.moveUsrbins(): Wrong indication of USRBINs for moving!")
+            print("Geometry.moveBins(): Wrong indication of USRBIN/EVENTBINs for moving!")
             print(whichBins)
             exit(1)
         if (bins2mod is not None):
@@ -1178,13 +1189,13 @@ class Geometry():
     def checkTransformations(self):
         '''
         Check that ROT-DEFI cards serve either only $start_transform directives,
-           or only LATTICE regions or USRBIN cards;
+           or only LATTICE regions or USRBIN/EVENTBIN cards;
         '''
         print("checking that every ROT-DEFI serve either only $start_transform directives,")
-        print("   or only LATTICE regions or USRBIN card...")
+        print("   or only LATTICE regions or USRBIN/EVENTBIN card...")
         bodTrasfNames,iEntry=self.ret("TRANSFLINKEDTOBODY","ALL")
         latTrasfNames,iEntry=self.ret("TRANSFLINKEDTOLAT","ALL")
-        binTrasfNames,iEntry=self.ret("TRANSFLINKEDTOUSRBIN","ALL")
+        binTrasfNames,iEntry=self.ret("TRANSFLINKEDTBIN","ALL")
         lShared=False
         for bodTrasfName in bodTrasfNames:
             if (bodTrasfName in latTrasfNames):
@@ -1192,11 +1203,11 @@ class Geometry():
                 lShared=True
         for latTrasfName in latTrasfNames:
             if (latTrasfName in binTrasfNames):
-                print("...ROT-DEFI %s used for both LATTICE regions and USRBIN scoring cards!"%(latTrasfName))
+                print("...ROT-DEFI %s used for both LATTICE regions and USRBIN/EVENTBIN scoring cards!"%(latTrasfName))
                 lShared=True
         for binTrasfName in binTrasfNames:
             if (binTrasfName in bodTrasfNames):
-                print("...ROT-DEFI %s used for both USRBIN scoring cards and $start_transform directives!"%(binTrasfName))
+                print("...ROT-DEFI %s used for both USRBIN/EVENTBIN scoring cards and $start_transform directives!"%(binTrasfName))
                 lShared=True
         print("...done.")
         return lShared
@@ -1971,12 +1982,12 @@ def ResizeBodies(hiveGeo,gridGeo,mapping,lDebug=True,enlargeFact=1.1):
         print("...done;")
     return gridGeo
 
-def ResizeUSRBINs(hiveGeo,gridGeo,mapping,lDebug=True,enlargeFact=1.1,resBins="ALL"):
+def ResizeBINs(hiveGeo,gridGeo,mapping,lDebug=True,enlargeFact=1.1,resBins="ALL"):
     if (enlargeFact is not None and resBins is not None):
-        print("resizing USRBINs...")
+        print("resizing USRBIN/EVENTBINs...")
         for iRhg,jRhg,iRgg,jRgg in zip(mapping["iRhg"],mapping["jRhg"],mapping["iRgg"],mapping["jRgg"]):
             newL=enlargeFact*hiveGeo[jRhg].regs[iRhg].rMaxLen
-            gridGeo[jRgg].resizeUsrbins(newL,whichUnits=resBins,lDebug=lDebug)
+            gridGeo[jRgg].resizeBins(newL,whichUnits=resBins,lDebug=lDebug)
         print("...done;")
     return gridGeo
 
@@ -2028,7 +2039,7 @@ if (__name__=="__main__"):
     #   get mapping (HiveGeo and GridGeo become lists, in case they are simple instances of Geoemtry)
     HiveGeo,GridGeo,mapping,mapType=MapGridLocsOntoHiveLocs(HiveGeo,GridGeo,lDebug=lDebug)
     GridGeo=ResizeBodies(HiveGeo,GridGeo,mapping,lDebug=lDebug)
-    GridGeo=ResizeUSRBINs(HiveGeo,GridGeo,mapping,lDebug=lDebug,resBins=25)
+    GridGeo=ResizeBINs(HiveGeo,GridGeo,mapping,lDebug=lDebug,resBins=25)
     mergedGeo=Geometry.MergeGeos(HiveGeo,GridGeo,mapping,mapType,lDebug=lDebug)
-    mergedGeo.reAssiginUSRBINunits(nMaxBins=35*35*5000,usedUnits=26)
+    mergedGeo.reAssiginBINunits(nMaxBins=35*35*5000,usedUnits=26)
     mergedGeo.echo("merged.inp")

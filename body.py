@@ -288,7 +288,10 @@ class Body(GeoObject):
             else:
                 if (lDebug):
                     myStr="%-3s %8s"%(self.bType,self.echoName())
-                    print("applying rotation by %g degs on axis %d to body %s..."%(myTheta,myAxis,myStr))
+                    myUnit="degs"
+                    if (not lDegs): myUnit="rad"
+                    print("...applying rotation by %f %s around axis %d to body %s..."%\
+                          (myTheta,myUnit,myAxis,myStr))
                 myMat=RotMat(myAng=myTheta,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
                 self.rotate(myMat=myMat,myTheta=None,myAxis=myAxis,lDegs=lDegs,lDebug=lDebug)
 
