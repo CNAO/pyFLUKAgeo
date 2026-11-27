@@ -14,12 +14,17 @@ class RotDefi(GeoObject):
     - parsing in FREE format expects an empty space as field separator;
     '''
 
-    def __init__(self,myAx=3,myPhi=0.0,myTh=0.0,myDD=None,myComment=""):
+    def __init__(self,myAx=3,myPhi=0.0,myTh=0.0,lDegs=True,myDD=None,myComment=""):
         # mainly for comments, name NOT used!
         GeoObject.__init__(self,myComment=myComment)
         self.axis=myAx           # FLUKA coding: 1=x, 2=y, 3=z
-        self.phi=myPhi           # polar angle [degrees] (FLUKA units)
-        self.theta=myTh          # azimuth angle [degrees] (FLUKA units)
+        if (lDegs):
+            self.phi=myPhi              # polar angle [degrees] (FLUKA units)
+            self.theta=myTh             # azimuth angle [degrees] (FLUKA units)
+        else:
+            self.phi=np.degrees(myPhi)  # polar angle [degrees] (FLUKA units)
+            self.theta=np.degrees(myTh) # azimuth angle [degrees] (FLUKA units)
+        print("RotDefi",lDegs)
         if (myDD is None): myDD=np.zeros(3) # bug in python garbage collector?
         self.DD=myDD             # translation [cm] (x,y,z components)
 

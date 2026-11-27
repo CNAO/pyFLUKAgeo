@@ -62,11 +62,11 @@ class Scoring(GeoObject):
                     # from first line defining USRBIN, get USRBIN name
                     newScoDet.rename(myLine[70:].strip(),lNotify=False)
         if (len(newScoDet.definition)!=2):
-            print("Scoring.fromBuf(): something wrong when parsing USRBIN cards: got %d lines!"\
-                  %(len(newScoDet.definition)))
+            print("%s.fromBuf(): something wrong when parsing scoring cards: got %d lines!"\
+                  %(self.__name__,len(newScoDet.definition)))
             exit(1)
         if (len(newScoDet.name)==0):
-            print("Scoring.fromBuf(): something wrong when parsing USRBIN cards: no name!")
+            print("%s.fromBuf(): something wrong when parsing scoring cards: no name!"%(self.__name__))
             exit(1)
         return newScoDet
 
@@ -118,13 +118,13 @@ class Usrbin(Scoring):
                 if (iLine>0): newBuffer=newBuffer+"\n"
                 newBuffer=newBuffer+myLine
         # parse buffers
-        newUsrBin=Scoring.fromBuf(newBuffer,newScoDet=Usrbin())
+        newBin=Scoring.fromBuf(newBuffer,newScoDet=Usrbin())
         if (len(RotPrBinBuff)>0):
-            newUsrBin.assignTransformName(RotPrBinBuff[20:30].strip())
-            if (len(newUsrBin.TransfName)==0):
-                print("Usrbin.fromBuf(): something wrong when parsing USRBIN cards: no ROT-DEFI card name!")
+            newBin.assignTransformName(RotPrBinBuff[20:30].strip())
+            if (len(newBin.TransfName)==0):
+                print("%s.fromBuf(): something wrong when parsing cards: no ROT-DEFI card name!"%(self.__name__))
                 exit(1)
-        return newUsrBin
+        return newBin
 
     def getBinType(self):
         return int(abs(float(self.definition[0][0:10]))+1E-4)
@@ -156,12 +156,12 @@ class Usrbin(Scoring):
                 elif (axes.upper()=="Z"):
                     nBins=self.getNbins(axes=[3])
                 else:
-                    print("Usrbin.getNbins(): cannot get number of bins on ax specified as %s!"%(axes))
+                    print("%s.getNbins(): cannot get number of bins on ax specified as %s!"%(self.__name__,axes))
                     exit(1)
             elif (1<=axes and axes<=3):
                 nBins=int(abs(float(self.definition[1][30+(axes-1)*10:40+(axes-1)*10]))+1E-4)
             else:
-                print("Usrbin.getNbins(): cannot get number of bins on ax %d [1:3]!"%(axes))
+                print("%s.getNbins(): cannot get number of bins on ax %d [1:3]!"%(self.__name__,axes))
                 exit(1)
         return nBins
     def setNbins(self,nBins=[1],axes=[3],lFree=False):
@@ -170,11 +170,11 @@ class Usrbin(Scoring):
             if (axes.upper()=="ALL"):
                 axes=[1,2,3]
             else:
-                print("Usrbin.setNbins(): cannot set nBins to ax %s!"%(axes))
+                print("%s.setNbins(): cannot set nBins to ax %s!"%(self.__name__,axes))
                 exit(1)
         if (isinstance(nBins,float) or isinstance(nBins,int)): nBins=[nBins]
         if (len(axes)!=len(nBins)):
-            print("Usrbin.setNbins(): len(axes)!=len(nBins)! axes=",axes,"; nBins=",nBins)
+            print("%s.setNbins(): len(axes)!=len(nBins)! axes="%(self.__name__),axes,"; nBins=",nBins)
             exit(1)
         for myN,myAx in zip(nBins,axes):
             if (myAx<3):
@@ -184,7 +184,7 @@ class Usrbin(Scoring):
                 self.definition[1]=self.definition[1][0:30+10*(myAx-1)]+\
                    echoFloats(myN,lFree=lFree)[0]
             else:
-                print("Usrbin.setNbins(): cannot set %d bins to axis %d!"%(myN,myAx))
+                print("%s.setNbins(): cannot set %d bins to axis %d!"%(self.__name__,myN,myAx))
                 exit(1)
 
     def getExtremes(self,axes=3):
@@ -206,7 +206,7 @@ class Usrbin(Scoring):
             elif (axes==3):
                 myMax=float(self.definition[0][30+(axes-1)*10:          ])
             else:
-                print("Usrbin.getExtremes(): cannot get extremes of bin on axis %d!"%(axes))
+                print("%s.getExtremes(): cannot get extremes of bin on axis %d!"%(self.__name__,axes))
                 exit(1)
             if (axes==2 and self.isCylindricalBinning()):
                 myMin=-np.pi
@@ -220,13 +220,13 @@ class Usrbin(Scoring):
             elif (axes.upper()=="Z"):
                 myMin,myMax=self.getExtremes(axes=3)
             else:
-                print("Usrbin.getExtremes(): cannot get extremes of bin on axis %s!"%(axes))
+                print("%s.getExtremes(): cannot get extremes of bin on axis %s!"%(self.__name__,axes))
                 exit(1)
         return myMin,myMax
     def setExtremes(self,myMin,myMax,axes=3,lFree=False):
         if (isinstance(myMin,list) and isinstance(myMax,list) and isinstance(axes,list)):
             if (len(myMin)!=len(myMax) or len(myMin)!=len(axes)):
-                print("Usrbin.setExtremes(): cannot set min=",myMin,",max=",myMax,"axes",axes)
+                print("%s.setExtremes(): cannot set min="%(self.__name__),myMin,",max=",myMax,"axes",axes)
                 exit(1)
             for tMin,tMax,tAx in zip(myMin,myMax,axes):
                 self.setExtremes(tMin,tMax,axes=tAx,lFree=lFree)
@@ -250,7 +250,7 @@ class Usrbin(Scoring):
                     self.definition[0]=self.definition[0][:30+(axes-1)*10]+\
                                        myMaxStr
                 else:
-                    print("Usrbin.setExtremes(): cannot set extremes of bin on axis %d!"%(axes))
+                    print("%s.setExtremes(): cannot set extremes of bin on axis %d!"%(self.__name__,axes))
                     exit(1)
                 self.definition[1]=self.definition[1][:(axes-1)*10]+\
                                    myMinStr+\
@@ -263,16 +263,16 @@ class Usrbin(Scoring):
                 elif (axes.upper()=="Z"):
                     self.setExtremes(myMin,myMax,axes=3,lFree=lFree)
                 else:
-                    print("Usrbin.setExtremes(): cannot set extremes of bin on axis %s!"%(axes))
+                    print("%s.setExtremes(): cannot set extremes of bin on axis %s!"%(self.__name__,axes))
                     exit(1)
         else:
-            print("Usrbin.setExtremes(): mixed arrays!")
+            print("%s.setExtremes(): mixed arrays!"%(self.__name__))
             exit(1)
 
     def move(self,myCoord,axes=3,lAbs=True,lFree=False):
         if ((isinstance(myCoord,list) or isinstance(myCoord,np.ndarray)) and isinstance(axes,list)):
             if (len(myCoord)!=len(axes)):
-                print("Usrbin.move(): cannot set absPos=",myCoord,"axes",axes)
+                print("%s.move(): cannot set absPos="%(self.__name__),myCoord,"axes",axes)
                 exit(1)
             for tCoord,tAx in zip(myCoord,axes):
                 if (tCoord!=0.0): self.move(tCoord,axes=tAx,lAbs=lAbs,lFree=lFree)
@@ -288,12 +288,12 @@ class Usrbin(Scoring):
                 newMin=newMin-currMean; newMax=newMax-currMean
             self.setExtremes(newMin,newMax,axes=axes,lFree=lFree)
         else:
-            print("Usrbin.move(): mixed arrays!")
+            print("%s.move(): mixed arrays!"%(self.__name__))
             exit(1)
 
     def resize(self,newL,axis=3):
         if (axis!=3):
-            print("Usrbin.resize(): For the time being, it is possible to re-size USRBINs only along the Z-axis!")
+            print("%s.resize(): For the time being, it is possible to re-size only along the Z-axis!"%(self.__name__))
             exit(1)
         currMin,currMax=self.getExtremes(axes=axis); currNbins=self.getNbins(axes=axis)
         currDelta=currMax-currMin; currStep=currDelta*1.0/currNbins
@@ -311,12 +311,41 @@ class Usrbin(Scoring):
 
     def assignTransformName(self,trasfName):
         if (len(trasfName)>0):
+            print("assigning transf name %s"%(trasfName))
             self.TransfName=trasfName
     def retTransformName(self):
         return self.TransfName
     def isLinkedToTransform(self):
         return self.retTransformName() is not None
-    
+
+class Eventbin(Usrbin):
+    '''
+    A very basic class for handling Eventbins.
+    '''
+    def __init__(self,myName="",myComment=""):
+        Scoring.__init__(self,myName=myName,myComment=myComment,scoType="EVENTBIN")
+        self.TransfName=None
+
+    @staticmethod
+    def fromBuf(myBuffer):
+        newBuffer=""
+        RotPrBinBuff=""
+        # fill in buffers
+        for iLine,myLine in enumerate(myBuffer.split("\n")):
+            if (myLine.strip().startswith("ROTPRBIN")):
+                RotPrBinBuff=myLine.strip()
+            else:
+                if (iLine>0): newBuffer=newBuffer+"\n"
+                newBuffer=newBuffer+myLine
+        # parse buffers
+        newBin=Scoring.fromBuf(newBuffer,newScoDet=Eventbin())
+        if (len(RotPrBinBuff)>0):
+            newBin.assignTransformName(RotPrBinBuff[20:30].strip())
+            if (len(newBin.TransfName)==0):
+                print("%s.fromBuf(): something wrong when parsing cards: no ROT-DEFI card name!"%(self.__name__))
+                exit(1)
+        return newBin
+
 class TwoRegBasedScoring(Scoring):
     '''
     A very basic class for handling region-based scoring cards with two regions.
@@ -334,13 +363,13 @@ class TwoRegBasedScoring(Scoring):
                                "%10s"%(regName.strip())+\
                                self.definition[0][40+10*(whichReg-1):]
         else:
-            print("Usryield.setRegName(): which region do you choose?")
+            print("%s.setRegName(): which region do you choose?"%(self.__name__))
             exit(1)
     def retRegName(self,whichReg):
         if (whichReg==1 or whichReg==2):
             return self.definition[0][30+10*(whichReg-1):40+10*(whichReg-1)].strip()
         else:
-            print("Usryield.retRegName(): which region do you choose?")
+            print("%s.retRegName(): which region do you choose?"%(self.__name__))
             exit(1)
     def regNameReplaceInDef(self,oldName,newName,nRegs=2):
         for iReg in range(nRegs):
